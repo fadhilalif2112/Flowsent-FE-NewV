@@ -1,0 +1,169 @@
+import React from "react";
+import { Star, Reply, Paperclip, Download, Eye } from "lucide-react";
+import { formatDate } from "../utils/formatDate";
+import { getFilePreview } from "../utils/fileUtils";
+
+function EmailRow({
+  email,
+  isSelected,
+  isChecked,
+  onClick,
+  onToggleCheck,
+  onAction,
+}) {
+  const handleStarClick = (e) => {
+    e.stopPropagation();
+    onAction(email.flagged ? "unflag" : "flag");
+  };
+
+  const handleCheckboxClick = (e) => {
+    e.stopPropagation();
+  };
+
+  const isNew = () => {
+    const emailDate = new Date(email.timestamp);
+    const now = new Date();
+    return now - emailDate < 24 * 60 * 60 * 1000;
+  };
+
+  const handleDownload = (attachment) => {
+    console.log(`Downloading attachment: ${attachment.filename}`);
+  };
+
+  const handlePreview = (attachment) => {
+    console.log(`Previewing attachment: ${attachment.filename}`);
+  };
+
+  return (
+    <div
+      onClick={onClick}
+      className={`px-3 sm:px-6 py-3 sm:py-4 cursor-pointer transition-all border-l-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 ${
+        isSelected
+          ? "bg-indigo-50 dark:bg-indigo-900/20 border-l-indigo-600"
+          : "border-l-transparent"
+      } ${
+        !email.seen ? "bg-blue-100/30 dark:bg-blue-900/10" : ""
+      } border-b border-slate-100 dark:border-slate-700 last:border-b-0`}
+    >
+      <div className="flex items-start space-x-2 sm:space-x-4">
+        {/* Checkbox */}
+        <div className="flex-shrink-0 mt-1" onClick={handleCheckboxClick}>
+          <input
+            type="checkbox"
+            checked={isChecked}
+            onChange={onToggleCheck}
+            className="w-4 h-4 text-indigo-600 bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 rounded focus:ring-indigo-500 focus:ring-2 cursor-pointer"
+          />
+        </div>
+
+        {/* Star/Flag */}
+        <button
+          onClick={handleStarClick}
+          className="flex-shrink-0 mt-1 text-slate-400 dark:text-slate-500 hover:text-amber-500 transition-colors focus:outline-none"
+          aria-label={email.flagged ? "Unflag" : "Flag"}
+        >
+          <Star
+            className={`w-4 sm:w-5 h-4 sm:h-5 ${
+              email.flagged ? "text-amber-500 fill-amber-500" : ""
+            }`}
+          />
+        </button>
+
+        {/* Email Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between mb-1">
+            <div className="flex items-center space-x-1 sm:space-x-2 min-w-0 flex-1">
+              <span
+                className={`text-xs sm:text-sm truncate ${
+                  !email.seen
+                    ? "font-semibold text-slate-900 dark:text-slate-100"
+                    : "text-slate-700 dark:text-slate-300"
+                }`}
+              >
+                {email.sender}
+              </span>
+              {email.answered && (
+                <Reply className="w-3 sm:w-4 h-3 sm:h-4 text-blue-500 flex-shrink-0" />
+              )}
+              {email.rawAttachments && email.rawAttachments.length > 0 && (
+                <Paperclip className="w-3 sm:w-4 h-3 sm:h-4 text-slate-400 dark:text-slate-500 flex-shrink-0" />
+              )}
+              {!email.seen && (
+                <span className="text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-800 px-2 py-0.5 rounded-full ml-2">
+                  Unread
+                </span>
+              )}
+              {isNew() && (
+                <span className="text-xs font-medium text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-800 px-2 py-0.5 rounded-full ml-2">
+                  New
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-slate-500 dark:text-slate-400 ml-2 sm:ml-3 flex-shrink-0 font-medium">
+              {formatDate(email.timestamp)}
+            </span>
+          </div>
+
+          <div
+            className={`text-xs sm:text-sm mb-1 truncate ${
+              !email.seen
+                ? "font-semibold text-slate-900 dark:text-slate-100"
+                : "text-slate-600 dark:text-slate-400"
+            }`}
+          >
+            {email.subject || "(No Subject)"}
+          </div>
+
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 line-clamp-1 sm:line-clamp-2 leading-relaxed">
+            {email.preview}
+          </p>
+
+          {/* Attachments Section */}
+          {email.rawAttachments && email.rawAttachments.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {email.rawAttachments.map((attachment, index) => (
+                <div
+                  key={index}
+                  className="flex items-center space-x-2 bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded-md text-xs w-auto max-w-[150px]"
+                >
+                  <img
+                    src={getFilePreview({ name: attachment.filename })}
+                    alt="Attachment preview"
+                    className="w-4 h-4 object-contain"
+                  />
+                  <span className="text-slate-700 dark:text-slate-300 truncate">
+                    {attachment.filename || `Attachment ${index + 1}`}
+                  </span>
+                  <div className="flex space-x-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePreview(attachment);
+                      }}
+                      className="text-blue-500 hover:text-blue-700 focus:outline-none"
+                      aria-label="Preview attachment"
+                    >
+                      <Eye className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDownload(attachment);
+                      }}
+                      className="text-green-500 hover:text-green-700 focus:outline-none"
+                      aria-label="Download attachment"
+                    >
+                      <Download className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default EmailRow;

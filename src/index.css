@@ -1,0 +1,355 @@
+@custom-variant dark (&:where(.dark, .dark *));
+
+@import "tailwindcss";
+
+/* === Custom colors & fonts === */
+@theme {
+  --color-primary: #6366f1;
+  --color-primary-light: #818cf8;
+  --color-primary-dark: #4f46e5;
+  --font-sans: "Inter", system-ui, sans-serif;
+}
+
+/* === Base styles === */
+:root {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc;
+  color: #0f172a;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+/* Custom scrollbar - Light Mode */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 5px;
+  border: 2px solid #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Custom scrollbar - Dark Mode */
+.dark ::-webkit-scrollbar-track {
+  background: #1e293b;
+  border-radius: 5px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+  border-radius: 5px;
+  border: 2px solid #1e293b;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+}
+
+.dark * {
+  scrollbar-color: #475569 #1e293b;
+}
+
+/* Utility classes */
+.text-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Email body content styling */
+.email-body-content {
+  line-height: 1.7;
+  color: #334155;
+}
+
+.dark .email-body-content {
+  color: #cbd5e1;
+}
+
+.email-body-content p {
+  margin-bottom: 1rem;
+}
+
+.email-body-content a {
+  color: #6366f1;
+  text-decoration: underline;
+}
+
+.dark .email-body-content a {
+  color: #818cf8;
+}
+
+.email-body-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 1rem 0;
+}
+
+.email-body-content h1,
+.email-body-content h2,
+.email-body-content h3 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.dark .email-body-content h1,
+.dark .email-body-content h2,
+.dark .email-body-content h3 {
+  color: #e2e8f0;
+}
+
+.email-body-content h1 {
+  font-size: 1.875rem;
+}
+
+.email-body-content h2 {
+  font-size: 1.5rem;
+}
+
+.email-body-content h3 {
+  font-size: 1.25rem;
+}
+
+.email-body-content blockquote {
+  border-left: 4px solid #e2e8f0;
+  padding-left: 1rem;
+  margin: 1rem 0;
+  font-style: italic;
+  color: #64748b;
+}
+
+.dark .email-body-content blockquote {
+  border-left-color: #475569;
+  color: #94a3b8;
+}
+
+.email-body-content code {
+  background-color: #f1f5f9;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.875em;
+  font-family: "Courier New", monospace;
+  color: #e11d48;
+}
+
+.dark .email-body-content code {
+  background-color: #1e293b;
+  color: #fb7185;
+}
+
+.email-body-content pre {
+  background-color: #f1f5f9;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1rem 0;
+}
+
+.dark .email-body-content pre {
+  background-color: #1e293b;
+}
+
+.email-body-content pre code {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.email-body-content ul,
+.email-body-content ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.email-body-content li {
+  margin-bottom: 0.5rem;
+}
+
+.email-body-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.email-body-content th,
+.email-body-content td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.dark .email-body-content th,
+.dark .email-body-content td {
+  border-color: #475569;
+}
+
+.email-body-content th {
+  background-color: #f1f5f9;
+  font-weight: 600;
+}
+
+.dark .email-body-content th {
+  background-color: #1e293b;
+}
+
+/* Smooth transitions for theme switching */
+*,
+*::before,
+*::after {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+/* Remove transition for specific elements that shouldn't transition */
+input,
+textarea,
+select,
+button {
+  transition-property: background-color, border-color;
+}
+
+/* Prose styling for email content (alternative to @tailwindcss/typography) */
+.prose {
+  color: #334155;
+  max-width: 65ch;
+}
+
+.prose-invert {
+  color: #cbd5e1;
+}
+
+/* REACT QUILL EDITOR */
+/* Hilangkan outline atau shadow saat fokus */
+.ql-container.ql-snow:focus-within,
+.ql-editor:focus,
+.ql-editor.ql-blank:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Bersihkan border internal default Quill */
+.ql-container.ql-snow {
+  border: none !important;
+  background-color: transparent !important;
+}
+
+.ql-toolbar.ql-snow {
+  border: none !important;
+  border-bottom: 1px solid rgb(203 213 225); /* border-slate-300 */
+}
+
+.dark .ql-toolbar.ql-snow {
+  border-bottom: 1px solid rgb(51 65 85); /* dark:border-slate-700 */
+}
+
+/* === DARK MODE OVERRIDES UNTUK QUILL === */
+.dark .ql-toolbar.ql-snow {
+  background-color: rgb(15 23 42); /* bg-slate-900 */
+  border-bottom: 1px solid rgb(51 65 85); /* border-slate-700 */
+  color: rgb(226 232 240); /* text-slate-200 */
+}
+
+.dark .ql-toolbar.ql-snow .ql-stroke {
+  stroke: rgb(226 232 240); /* icon color */
+}
+
+.dark .ql-toolbar.ql-snow .ql-fill {
+  fill: rgb(226 232 240);
+}
+
+.dark .ql-toolbar.ql-snow .ql-picker {
+  color: rgb(226 232 240);
+}
+
+.dark .ql-toolbar.ql-snow .ql-picker-options {
+  background-color: rgb(15 23 42); /* dropdown bg */
+  border: 1px solid rgb(51 65 85);
+}
+
+.dark .ql-toolbar.ql-snow button:hover .ql-stroke,
+.dark .ql-toolbar.ql-snow button:hover .ql-fill,
+.dark .ql-toolbar.ql-snow .ql-picker-label:hover,
+.dark .ql-toolbar.ql-snow .ql-active .ql-stroke,
+.dark .ql-toolbar.ql-snow .ql-active .ql-fill {
+  stroke: rgb(167 139 250) !important; /* hover indigo-400 */
+  fill: rgb(167 139 250) !important;
+  color: rgb(167 139 250) !important;
+}
+
+.dark .ql-container.ql-snow {
+  background-color: rgb(15 23 42); /* bg-slate-900 */
+  color: rgb(226 232 240); /* text-slate-200 */
+  border: none !important;
+}
+
+.dark .ql-editor {
+  color: rgb(226 232 240);
+}
+
+.dark .ql-editor.ql-blank::before {
+  color: rgb(100 116 139); /* placeholder-slate-500 */
+  opacity: 0.7;
+}
+
+/* Link & code block tweaks */
+.dark .ql-editor a {
+  color: rgb(129 140 248); /* indigo-400 */
+}
+
+.dark .ql-editor code {
+  background-color: rgb(30 41 59); /* slate-800 */
+  color: rgb(226 232 240);
+  border-radius: 4px;
+  padding: 0.15rem 0.3rem;
+}
+
+/* blockquote */
+.dark .ql-editor blockquote {
+  border-left: 3px solid rgb(71 85 105); /* slate-600 */
+  color: rgb(203 213 225); /* slate-300 */
+}
+
+/* list bullets & number color */
+.dark .ql-editor li::before {
+  color: rgb(148 163 184); /* slate-400 */
+}
