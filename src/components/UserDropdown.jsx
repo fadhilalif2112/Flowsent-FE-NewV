@@ -2,13 +2,32 @@ import React, { useState, useRef, useEffect } from "react";
 import { ChevronDown, User, Moon, Sun, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../contexts/ThemeContext";
+import { logout } from "../services/api";
 
-function UserDropdown({ userEmail = "user@example.com" }) {
+function UserDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const [user, setUser] = useState({ email: "user@example.com", name: "User" });
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
 
+  // Ambil data pengguna dari sessionStorage saat komponen dimuat
+  useEffect(() => {
+    const storedUser = sessionStorage.getItem("user");
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setUser({
+          email: parsedUser.email || "user@example.com",
+          name: parsedUser.name || "User",
+        });
+      } catch (error) {
+        console.error("Error parsing user data from sessionStorage:", error);
+      }
+    }
+  }, []);
+
+  // Tangani klik di luar dropdown untuk menutup
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -19,9 +38,19 @@ function UserDropdown({ userEmail = "user@example.com" }) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("auth_token");
-    navigate("/login");
+  const handleLogout = async () => {
+    try {
+      // Panggil fungsi logout dari services/api.js
+      const response = await logout();
+      console.log(response.message); // Log pesan dari server atau lokal
+    } catch (error) {
+      console.error("Error during logout:", error);
+    } finally {
+      // Hapus semua data di sessionStorage
+      sessionStorage.clear();
+      // Alihkan ke halaman login
+      navigate("/login");
+    }
   };
 
   return (
@@ -32,10 +61,10 @@ function UserDropdown({ userEmail = "user@example.com" }) {
         className="flex items-center space-x-2 text-slate-600 hover:text-slate-800 dark:text-slate-300 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-800 px-3 py-2 rounded-lg transition"
       >
         <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white text-sm font-semibold">
-          {userEmail.charAt(0).toUpperCase()}
+          {user.name.charAt(0).toUpperCase()}
         </div>
         <span className="hidden sm:inline text-sm font-medium">
-          {userEmail.split("@")[0]}
+          {user.name}
         </span>
         <ChevronDown
           className={`w-4 h-4 transition-transform ${
@@ -51,14 +80,14 @@ function UserDropdown({ userEmail = "user@example.com" }) {
           <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700">
             <div className="flex items-center space-x-3">
               <div className="w-10 h-10 bg-indigo-600 rounded-full flex items-center justify-center text-white font-semibold">
-                {userEmail.charAt(0).toUpperCase()}
+                {user.name.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">
-                  {userEmail.split("@")[0]}
+                  {user.name}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-                  {userEmail}
+                  {user.email}
                 </div>
               </div>
             </div>

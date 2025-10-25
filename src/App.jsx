@@ -7,7 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import MailboxPage from "./pages/MailboxPage";
 
 function App() {
-  const isAuthenticated = () => !!localStorage.getItem("authToken");
+  const isAuthenticated = () => !!sessionStorage.getItem("authToken");
 
   const PrivateRoute = ({ children }) =>
     isAuthenticated() ? children : <Navigate to="/login" replace />;

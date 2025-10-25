@@ -4,16 +4,100 @@
  * pengiriman email, draft, lampiran, dan operasi lainnya.
  */
 
+import axios from "axios";
+
+// Secure Token Manager
+class TokenManager {
+  static getToken() {
+    const token = sessionStorage.getItem("authToken");
+    const timestamp = parseInt(sessionStorage.getItem("tokenTimestamp"));
+
+    // Token expires after 1 hour
+    if (token && timestamp && Date.now() - timestamp > 3600000) {
+      this.clearToken();
+      return null;
+    }
+
+    return token;
+  }
+
+  static setToken(token) {
+    sessionStorage.setItem("authToken", token);
+    sessionStorage.setItem("tokenTimestamp", Date.now().toString());
+  }
+
+  static getRefreshToken() {
+    return sessionStorage.getItem("refreshToken");
+  }
+
+  static setRefreshToken(refreshToken) {
+    sessionStorage.setItem("refreshToken", refreshToken);
+  }
+
+  static getUser() {
+    const user = sessionStorage.getItem("user");
+    return user ? JSON.parse(user) : null;
+  }
+
+  static setUser(user) {
+    sessionStorage.setItem("user", JSON.stringify(user));
+  }
+
+  static clearToken() {
+    sessionStorage.removeItem("authToken");
+    sessionStorage.removeItem("tokenTimestamp");
+    sessionStorage.removeItem("refreshToken");
+    sessionStorage.removeItem("user");
+  }
+}
+
 const API_BASE_URL = "http://127.0.0.1:8000/api";
+
+// Membuat instance Axios dengan konfigurasi dasar
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  },
+});
+
+// Interceptor untuk menangani 401 Unauthorized
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true; // Tandai agar tidak loop tak terbatas
+      try {
+        const newToken = await refreshTokenApi();
+        // Update header Authorization di original request
+        originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
+        // Retry request dengan token baru
+        return apiClient(originalRequest);
+      } catch (refreshError) {
+        // Jika refresh gagal, hapus token dan lempar error
+        TokenManager.clearToken();
+        return Promise.reject(
+          new Error("Session expired. Please login again.")
+        );
+      }
+    }
+
+    // Jika bukan 401 atau refresh gagal, lempar error asli
+    return Promise.reject(error);
+  }
+);
 
 /**
  * Mengambil header otentikasi standar untuk setiap permintaan API.
- * Termasuk token Bearer jika tersedia di localStorage.
+ * Termasuk token Bearer jika tersedia dari TokenManager.
  *
  * @returns {Object} Header standar dengan Authorization jika user login.
  */
 const getAuthHeaders = () => {
-  const token = localStorage.getItem("authToken");
+  const token = TokenManager.getToken();
   return {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -34,46 +118,52 @@ const getAuthHeaders = () => {
  * }
  */
 export const login = async (email, password) => {
-  const response = await fetch(`${API_BASE_URL}/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  let data;
   try {
-    data = await response.json();
+    const response = await apiClient.post("/login", { email, password });
+    const data = response.data;
+
+    // Pastikan struktur sesuai backend
+    if (!data.tokens?.access_token) {
+      throw new Error("Token tidak ditemukan di respons");
+    }
+
+    // Simpan access token, refresh token, dan user info
+    TokenManager.setToken(data.tokens.access_token);
+    TokenManager.setRefreshToken(data.tokens.refresh_token);
+    TokenManager.setUser(data.user);
+
+    return {
+      user: data.user,
+      token: data.tokens.access_token,
+    };
   } catch (err) {
-    throw new Error("Invalid response from server");
+    throw new Error(err.response?.data?.message || "Login gagal");
   }
+};
 
-  if (!response.ok) {
-    throw new Error(data.message || "Login gagal");
+/**
+ * Refresh token untuk mendapatkan access token baru.
+ * @returns {Promise<string>} Access token baru.
+ */
+export const refreshTokenApi = async () => {
+  const refreshToken = TokenManager.getRefreshToken();
+  if (!refreshToken) throw new Error("No refresh token available");
+
+  try {
+    const response = await apiClient.post("/refresh", null, {
+      headers: {
+        Authorization: `Bearer ${refreshToken}`,
+        Accept: "application/json",
+      },
+    });
+
+    const data = response.data;
+    TokenManager.setToken(data.tokens.access_token);
+    TokenManager.setRefreshToken(data.tokens.refresh_token); // Update refresh token
+    return data.tokens.access_token;
+  } catch (err) {
+    throw new Error(err.response?.data?.message || "Refresh failed");
   }
-
-  // Pastikan struktur sesuai backend
-  if (!data.tokens?.access_token) {
-    throw new Error("Token tidak ditemukan di respons");
-  }
-
-  // Simpan access token
-  localStorage.setItem("authToken", data.tokens.access_token);
-
-  // Opsional: simpan refresh token jika ingin implementasi refresh
-  if (data.tokens.refresh_token) {
-    localStorage.setItem("refreshToken", data.tokens.refresh_token);
-  }
-
-  // Simpan user info (opsional)
-  localStorage.setItem("user", JSON.stringify(data.user));
-
-  return {
-    user: data.user,
-    token: data.tokens.access_token,
-  };
 };
 
 /**
@@ -81,36 +171,24 @@ export const login = async (email, password) => {
  * Backend akan blacklist token via SecureJWTHandler.
  */
 export const logout = async () => {
-  const token = localStorage.getItem("authToken");
+  const token = TokenManager.getToken();
 
-  // Hapus dulu lokal (biar cepat)
-  localStorage.removeItem("authToken");
-  localStorage.removeItem("refreshToken");
-  localStorage.removeItem("user");
+  // Hapus token lokal
+  TokenManager.clearToken();
 
   if (!token) {
     return { message: "Already logged out" };
   }
 
   try {
-    const response = await fetch(`${API_BASE_URL}/logout`, {
-      method: "POST",
+    const response = await apiClient.post("/logout", null, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/json",
       },
     });
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.warn(
-        "Logout API failed, but token already removed locally:",
-        data
-      );
-    }
-
-    return data;
+    return response.data;
   } catch (err) {
     console.warn("Logout request failed, but token already cleared:", err);
     return { message: "Logged out locally" };
@@ -129,30 +207,12 @@ export const logout = async () => {
  * @returns {Promise<Object>} Daftar email dari server.
  */
 export const fetchEmailsApi = async (forceRefresh = false) => {
-  const token = localStorage.getItem("authToken");
-  if (!token)
-    throw new Error("Authentication token not found. Please login again.");
-
-  const url = new URL(`${API_BASE_URL}/emails/all`);
-  if (forceRefresh) url.searchParams.append("refresh", "true");
-
-  const res = await fetch(url.toString(), {
-    method: "GET",
+  const params = forceRefresh ? { refresh: "true" } : {};
+  const response = await apiClient.get("/emails/all", {
+    params,
     headers: getAuthHeaders(),
   });
-
-  if (res.status === 401) {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
-    throw new Error("Session expired. Please login again.");
-  }
-
-  if (!res.ok) {
-    const errorData = await res.json();
-    throw new Error(errorData.message || "Failed to fetch emails");
-  }
-
-  return await res.json();
+  return response.data;
 };
 
 /**
@@ -163,25 +223,19 @@ export const fetchEmailsApi = async (forceRefresh = false) => {
  * @param {string} filename - Nama file lampiran.
  */
 export const downloadAttachmentApi = async (uid, filename) => {
-  const token = localStorage.getItem("authToken");
+  const token = TokenManager.getToken();
   if (!token)
     throw new Error("Authentication token not found. Please login again.");
 
-  const res = await fetch(
-    `${API_BASE_URL}/emails/attachments/${uid}/download/${filename}`,
+  const response = await apiClient.get(
+    `/emails/attachments/${uid}/download/${filename}`,
     {
-      method: "GET",
       headers: { Authorization: `Bearer ${token}` },
+      responseType: "blob",
     }
   );
 
-  if (!res.ok) {
-    const errorText = await res.text();
-    console.error("Download failed:", res.status, errorText);
-    throw new Error("Failed to download attachment");
-  }
-
-  const blob = await res.blob();
+  const blob = response.data;
   const url = window.URL.createObjectURL(blob);
 
   // Buat link unduhan manual agar browser otomatis mengunduh file
@@ -201,62 +255,56 @@ export const downloadAttachmentApi = async (uid, filename) => {
  * Menandai email sebagai "sudah dibaca".
  */
 export const markAsReadApi = async (folder, messageId) => {
-  const response = await fetch(`${API_BASE_URL}/emails/mark-as-read`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ folder, message_id: messageId }),
-  });
-
-  const data = await response.json();
-  if (!response.ok)
-    throw new Error(data.message || "Failed to mark email as read");
-  return data;
+  const response = await apiClient.post(
+    "/emails/mark-as-read",
+    { folder, message_id: messageId },
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+  return response.data;
 };
 
 /**
  * Menandai email sebagai "belum dibaca".
  */
 export const markAsUnreadApi = async (folder, messageId) => {
-  const response = await fetch(`${API_BASE_URL}/emails/mark-as-unread`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ folder, message_id: messageId }),
-  });
-
-  const data = await response.json();
-  if (!response.ok)
-    throw new Error(data.message || "Failed to mark email as unread");
-  return data;
+  const response = await apiClient.post(
+    "/emails/mark-as-unread",
+    { folder, message_id: messageId },
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+  return response.data;
 };
 
 /**
  * Menandai email sebagai "flagged" (bintang).
  */
 export const markAsFlaggedApi = async (folder, messageId) => {
-  const response = await fetch(`${API_BASE_URL}/emails/flag`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ folder, message_id: messageId }),
-  });
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.message || "Failed to flag email");
-  return data;
+  const response = await apiClient.post(
+    "/emails/flag",
+    { folder, message_id: messageId },
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+  return response.data;
 };
 
 /**
  * Menghapus tanda "flagged" dari email.
  */
 export const markAsUnflaggedApi = async (folder, messageId) => {
-  const response = await fetch(`${API_BASE_URL}/emails/unflag`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ folder, message_id: messageId }),
-  });
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.message || "Failed to unflag email");
-  return data;
+  const response = await apiClient.post(
+    "/emails/unflag",
+    { folder, message_id: messageId },
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+  return response.data;
 };
 
 // ==========================================================
@@ -267,62 +315,39 @@ export const markAsUnflaggedApi = async (folder, messageId) => {
  * Memindahkan email ke folder lain (Inbox, Archive, Junk, dll).
  */
 export const moveEmailApi = async (folder, messageIds, targetFolder) => {
-  const token = localStorage.getItem("authToken");
-  if (!token)
-    throw new Error("Authentication token not found. Please login again.");
-
-  const response = await fetch(`${API_BASE_URL}/emails/move`, {
-    method: "POST",
-    headers: getAuthHeaders(),
-    body: JSON.stringify({
+  const response = await apiClient.post(
+    "/emails/move",
+    {
       folder,
       message_ids: messageIds,
       target_folder: targetFolder,
-    }),
-  });
-
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.message || "Failed to move email(s)");
-  return data;
+    },
+    {
+      headers: getAuthHeaders(),
+    }
+  );
+  return response.data;
 };
 
 /**
  * Menghapus seluruh email dari folder Trash secara permanen.
  */
 export const deletePermanentAllApi = async () => {
-  const token = localStorage.getItem("authToken");
-  if (!token)
-    throw new Error("Authentication token not found. Please login again.");
-
-  const response = await fetch(`${API_BASE_URL}/emails/delete-permanent-all`, {
-    method: "DELETE",
+  const response = await apiClient.delete("/emails/delete-permanent-all", {
     headers: getAuthHeaders(),
   });
-
-  const data = await response.json();
-  if (!response.ok)
-    throw new Error(data.message || "Failed to permanently delete all emails");
-  return data;
+  return response.data;
 };
 
 /**
  * Menghapus email tertentu secara permanen dari Trash.
  */
 export const deletePermanentApi = async (messageIds) => {
-  const token = localStorage.getItem("authToken");
-  if (!token)
-    throw new Error("Authentication token not found. Please login again.");
-
-  const response = await fetch(`${API_BASE_URL}/emails/deletePermanent`, {
-    method: "DELETE",
+  const response = await apiClient.delete("/emails/deletePermanent", {
     headers: getAuthHeaders(),
-    body: JSON.stringify({ messageIds }),
+    data: { messageIds },
   });
-
-  const data = await response.json();
-  if (!response.ok)
-    throw new Error(data.message || "Failed to permanently delete emails");
-  return data;
+  return response.data;
 };
 
 // ==========================================================
@@ -352,8 +377,7 @@ export const sendEmailApi = async ({
   storedAttachments,
   messageId,
 }) => {
-  const token = localStorage.getItem("authToken");
-
+  const token = TokenManager.getToken();
   if (!token) {
     throw new Error("Authentication token not found. Please login again.");
   }
@@ -381,22 +405,14 @@ export const sendEmailApi = async ({
     });
   }
 
-  const response = await fetch(`${API_BASE_URL}/emails/send`, {
-    method: "POST",
+  const response = await apiClient.post("/emails/send", formData, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
     },
-    body: formData,
   });
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to send email");
-  }
-
-  return data;
+  return response.data;
 };
 
 /**
@@ -404,8 +420,7 @@ export const sendEmailApi = async ({
  * Mendukung lampiran baru yang dikirim melalui FormData.
  */
 export const saveDraftApi = async ({ to, subject, body, attachments }) => {
-  const token = localStorage.getItem("authToken");
-
+  const token = TokenManager.getToken();
   if (!token) {
     throw new Error("Authentication token not found. Please login again.");
   }
@@ -421,22 +436,14 @@ export const saveDraftApi = async ({ to, subject, body, attachments }) => {
     });
   }
 
-  const response = await fetch(`${API_BASE_URL}/emails/draft`, {
-    method: "POST",
+  const response = await apiClient.post("/emails/draft", formData, {
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/json",
     },
-    body: formData,
   });
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to save draft");
-  }
-
-  return data;
+  return response.data;
 };
 
 /**
@@ -444,7 +451,7 @@ export const saveDraftApi = async ({ to, subject, body, attachments }) => {
  * Jika ekstensi file tidak mendukung preview, fungsi akan mengembalikan fallback untuk download.
  */
 export const previewAttachmentApi = async (uid, filename) => {
-  const token = localStorage.getItem("authToken");
+  const token = TokenManager.getToken();
   if (!token)
     throw new Error("Authentication token not found. Please login again.");
 
@@ -456,19 +463,15 @@ export const previewAttachmentApi = async (uid, filename) => {
     return { fallbackDownload: true };
   }
 
-  const res = await fetch(
-    `${API_BASE_URL}/emails/attachments/${uid}/preview/${encodeURIComponent(
-      filename
-    )}`,
+  const response = await apiClient.get(
+    `/emails/attachments/${uid}/preview/${encodeURIComponent(filename)}`,
     {
-      method: "GET",
       headers: { Authorization: `Bearer ${token}` },
+      responseType: "blob",
     }
   );
 
-  if (!res.ok) throw new Error("Failed to preview attachment");
-
-  const blob = await res.blob();
+  const blob = response.data;
   const url = URL.createObjectURL(blob);
 
   return { url, mimeType: blob.type, filename, fallbackDownload: false };

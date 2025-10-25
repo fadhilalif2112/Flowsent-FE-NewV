@@ -119,7 +119,7 @@ function MailboxPage() {
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-slate-100 dark:bg-slate-900">
       {/* Header */}
-      <header className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between shadow-sm z-10">
+      <header className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between shadow-sm z-50">
         <div className="flex items-center space-x-3">
           {/* Mobile Sidebar Toggle */}
           <button
@@ -163,7 +163,7 @@ function MailboxPage() {
             <RefreshCw className="w-4 h-4" />
           </button>
 
-          <UserDropdown userEmail="user@example.com" />
+          <UserDropdown />
         </div>
       </header>
 
