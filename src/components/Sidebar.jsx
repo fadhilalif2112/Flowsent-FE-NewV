@@ -1,5 +1,5 @@
 // src/components/Sidebar.jsx
-import React from "react";
+import React, { useMemo } from "react";
 import {
   Inbox,
   FileText,
@@ -10,50 +10,100 @@ import {
   Trash2,
   Plus,
 } from "lucide-react";
-import { getFolderCounts, getUnreadCounts } from "../data/dummyEmails";
+import { useEmail } from "../contexts/EmailContext";
 
 function Sidebar({ currentFolder, onFolderChange, onCompose, collapsed }) {
-  const folderCounts = getFolderCounts();
-  const unreadCounts = getUnreadCounts();
+  const { allEmails } = useEmail();
 
+  // === Hitung folderCounts dan unreadCounts secara dinamis ===
+  const { folderCounts, unreadCounts } = useMemo(() => {
+    const counts = {
+      inbox: 0,
+      draft: 0,
+      sent: 0,
+      starred: 0,
+      archive: 0,
+      junk: 0,
+      deleted: 0,
+    };
+    const unread = {
+      inbox: 0,
+      draft: 0,
+      sent: 0,
+      starred: 0,
+      archive: 0,
+      junk: 0,
+      deleted: 0,
+    };
+
+    allEmails.forEach((email) => {
+      const folder = email.folder?.toLowerCase();
+
+      if (counts[folder] !== undefined) {
+        counts[folder]++;
+        if (!email.read) unread[folder]++;
+      }
+
+      // Jika email flagged = true → tambahkan ke folder starred
+      if (email.flagged) {
+        counts.starred++;
+        if (!email.read) unread.starred++;
+      }
+    });
+
+    return { folderCounts: counts, unreadCounts: unread };
+  }, [allEmails]);
+
+  // === Daftar folder untuk sidebar ===
   const folders = [
     {
       id: "inbox",
       name: "Inbox",
       icon: Inbox,
-      count: folderCounts.inbox || 0,
-      unread: unreadCounts.inbox || 0,
+      count: folderCounts.inbox,
+      unread: unreadCounts.inbox,
     },
     {
       id: "draft",
       name: "Drafts",
       icon: FileText,
-      count: folderCounts.draft || 0,
+      count: folderCounts.draft,
+      unread: unreadCounts.draft,
     },
-    { id: "sent", name: "Sent", icon: Send, count: folderCounts.sent || 0 },
+    {
+      id: "sent",
+      name: "Sent",
+      icon: Send,
+      count: folderCounts.sent,
+      unread: unreadCounts.sent,
+    },
     {
       id: "starred",
       name: "Starred",
       icon: Star,
-      count: folderCounts.starred || 0,
+      count: folderCounts.starred,
+      unread: unreadCounts.starred,
     },
     {
       id: "archive",
       name: "Archive",
       icon: Archive,
-      count: folderCounts.archive || 0,
+      count: folderCounts.archive,
+      unread: unreadCounts.archive,
     },
     {
       id: "junk",
       name: "Junk",
       icon: AlertOctagon,
-      count: folderCounts.junk || 0,
+      count: folderCounts.junk,
+      unread: unreadCounts.junk,
     },
     {
       id: "deleted",
       name: "Deleted",
       icon: Trash2,
-      count: folderCounts.deleted || 0,
+      count: folderCounts.deleted,
+      unread: unreadCounts.deleted,
     },
   ];
 

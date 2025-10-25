@@ -3,6 +3,7 @@ import React, { createContext, useContext, useState } from "react";
 import {
   fetchEmailsApi,
   markAsReadApi,
+  markAsUnreadApi,
   markAsFlaggedApi,
   markAsUnflaggedApi,
   moveEmailApi,
@@ -16,8 +17,8 @@ export const useEmail = () => useContext(EmailContext);
 
 export function EmailProvider({ children }) {
   // === STATE ===
-  const [allEmails, setAllEmails] = useState([]); // Store all emails from /emails/all
-  const [emails, setEmails] = useState([]); // Filtered and paginated emails for current folder
+  const [allEmails, setAllEmails] = useState([]); // Semua email (dari semua folder)
+  const [emails, setEmails] = useState([]); // Email aktif (folder yang sedang dibuka)
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("Loading emails...");
   const [pagination, setPagination] = useState(null);
@@ -26,7 +27,7 @@ export function EmailProvider({ children }) {
   const [selectedEmailIds, setSelectedEmailIds] = useState([]);
   const [notification, setNotification] = useState(null);
 
-  // === UTILS: PAGINATE EMAILS (Client-side) ===
+  // === UTILS: PAGINASI CLIENT-SIDE ===
   const paginateEmails = (folderEmails, page, perPage) => {
     const total = folderEmails.length;
     const totalPages = Math.ceil(total / perPage);
@@ -57,35 +58,44 @@ export function EmailProvider({ children }) {
   ) => {
     setLoading(true);
     try {
-      // Fetch all emails if not loaded or force refresh
       if (!allEmails.length || forceRefresh) {
         const response = await fetchEmailsApi(forceRefresh);
-        console.log("Fetch emails response:", response); // Debug
+        console.log("Fetch emails response:", response);
 
-        if (response.status === "success") {
-          // Konversi object { inbox: [], sent: [], ... } menjadi array dengan folder
-          const emailsWithFolder = Object.entries(response.data).flatMap(
-            ([folderName, emails]) => {
-              return emails.map((email) => ({
-                ...email,
-                folder: folderName, // Tambahkan properti folder
-              }));
-            }
-          );
-          setAllEmails(emailsWithFolder);
-        } else {
+        if (response.status === "fail" || response.status === "error") {
           throw new Error(
             response.error || response.message || "Failed to fetch emails"
           );
         }
+
+        if (response.status === "success" && response.data) {
+          // ubah bentuk object { inbox: [], sent: [] } → array tunggal
+          const emailsWithFolder = Object.entries(response.data).flatMap(
+            ([folderName, emails]) =>
+              emails.map((email) => ({
+                ...email,
+                folder: folderName,
+              }))
+          );
+
+          setAllEmails(emailsWithFolder);
+          console.log("All emails:", emailsWithFolder);
+        } else {
+          throw new Error("Invalid response format");
+        }
       }
 
-      // Filter by folder (case-insensitive)
-      const folderEmails = allEmails.filter(
-        (email) => email.folder?.toLowerCase() === folder.toLowerCase()
-      );
+      let folderEmails = [];
 
-      // Paginate filtered emails
+      // === Tambahkan kembali aturan untuk folder "starred" ===
+      if (folder.toLowerCase() === "starred") {
+        folderEmails = allEmails.filter((email) => email.flagged === true);
+      } else {
+        folderEmails = allEmails.filter(
+          (email) => email.folder?.toLowerCase() === folder.toLowerCase()
+        );
+      }
+
       const paginated = paginateEmails(folderEmails, page, limit);
       setEmails(paginated.data);
       setPagination(paginated.pagination);
@@ -114,12 +124,11 @@ export function EmailProvider({ children }) {
     setNotification({ message, type });
   };
 
-  // === HANDLERS (Now using real API) ===
+  // === HANDLERS ===
   const markAsRead = async (emailIds, currentFolder) => {
     setLoading(true);
     setLoadingMessage("Marking as read...");
     try {
-      // Backend expects single message_id per call, but we can loop for multiple
       for (const id of emailIds) {
         await markAsReadApi(currentFolder, id);
       }
@@ -133,19 +142,18 @@ export function EmailProvider({ children }) {
     }
   };
 
-  // Note: Backend doesn't have markAsUnread endpoint. If needed, add to backend or skip.
-  // For now, commenting out or leaving as dummy if required.
-  const markAsUnread = async (emailIds) => {
-    // Implement if backend adds it, or use dummy for now
+  const markAsUnread = async (emailIds, currentFolder) => {
     setLoading(true);
     setLoadingMessage("Marking as unread...");
     try {
-      await new Promise((res) => setTimeout(res, 1000)); // Dummy delay
+      for (const id of emailIds) {
+        await markAsUnreadApi(currentFolder, id);
+      }
       showNotification(
         `Marked ${emailIds.length} email(s) as unread`,
         "success"
       );
-      await refreshEmail("inbox");
+      await refreshEmail(currentFolder);
     } catch (err) {
       console.error("Error marking as unread:", err);
       showNotification("Gagal menandai sebagai belum dibaca", "error");
@@ -228,7 +236,7 @@ export function EmailProvider({ children }) {
       const response = await deletePermanentApi(emailIds);
       if (response.success) {
         showNotification(`Deleted ${emailIds.length} email(s)`, "success");
-        await refreshEmail("inbox"); // Adjust folder if needed
+        await refreshEmail("inbox"); // default refresh ke inbox
       } else {
         throw new Error(response.message || "Failed to delete emails");
       }
@@ -244,20 +252,24 @@ export function EmailProvider({ children }) {
   const value = {
     emails,
     loading,
+    loadingMessage,
     pagination,
     currentPage,
     perPage,
     selectedEmailIds,
     allEmails,
 
+    setLoading,
+    setLoadingMessage,
     fetchEmail,
     refreshEmail,
-    markAsRead, // Renamed for clarity
+    markAsRead,
     markAsUnread,
     flagEmail,
     unflagEmail,
     moveEmail,
     deleteEmails,
+    showNotification,
 
     setCurrentPage,
     setPerPage,
@@ -266,13 +278,10 @@ export function EmailProvider({ children }) {
 
   return (
     <EmailContext.Provider value={value}>
-      {/* Render children */}
       {children}
 
-      {/* Global Loading Overlay */}
       {loading && <Loading message={loadingMessage} />}
 
-      {/* Notification */}
       {notification && (
         <Notification
           message={notification.message}

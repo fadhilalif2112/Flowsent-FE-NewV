@@ -193,6 +193,68 @@ export const downloadAttachmentApi = async (uid, filename) => {
   link.remove();
 };
 
+/**
+ * Mengirim email baru atau lanjutan (reply/forward/draft).
+ * Mendukung lampiran dan file yang sudah tersimpan.
+ *
+ * @param {Object} payload - Data email yang dikirim.
+ * @param {string} payload.to - Tujuan penerima email.
+ * @param {string} payload.subject - Subjek email.
+ * @param {string} payload.body - Isi pesan email.
+ * @param {File[]} [payload.attachments] - Lampiran baru.
+ * @param {string[]} [payload.storedAttachments] - Lampiran lama dari draft.
+ * @param {string} [payload.draftId] - ID draft (jika update draft).
+ * @param {string} [payload.messageId] - ID pesan untuk reply/forward.
+ * @returns {Promise<Object>} Respons dari API setelah pengiriman.
+ */
+export const sendEmailApi = async ({ to, subject, body, attachments, draftId, storedAttachments, messageId }) => {
+  const token = localStorage.getItem("authToken");
+
+  if (!token) {
+    throw new Error("Authentication token not found. Please login again.");
+  }
+
+  const formData = new FormData();
+  formData.append("to", to);
+  formData.append("subject", subject);
+  formData.append("body", body);
+
+  if (draftId) {
+    formData.append("draft_id", draftId);
+  }
+
+  if (messageId) {
+    formData.append("message_id", messageId);
+  }
+
+  if (storedAttachments && storedAttachments.length > 0) {
+    formData.append("stored_attachments", JSON.stringify(storedAttachments));
+  }
+
+  if (attachments && attachments.length > 0) {
+    attachments.forEach((file) => {
+      formData.append("attachments[]", file);
+    });
+  }
+
+  const response = await fetch(`${API_BASE_URL}/emails/send`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.message || "Failed to send email");
+  }
+
+  return data;
+};
+
 // ==========================================================
 // EMAIL STATUS HANDLERS
 // ==========================================================
@@ -215,7 +277,7 @@ export const markAsReadApi = async (folder, messageId) => {
 
 /**
  * Menandai email sebagai "belum dibaca".
- */
+*/
 export const markAsUnreadApi = async (folder, messageId) => {
   const response = await fetch(`${API_BASE_URL}/emails/mark-as-unread`, {
     method: "POST",
@@ -326,78 +388,8 @@ export const deletePermanentApi = async (messageIds) => {
 };
 
 // ==========================================================
-// SEND, DRAFTS & ATTACHMENTS
+// DRAFTS & ATTACHMENTS
 // ==========================================================
-
-/**
- * Mengirim email baru atau lanjutan (reply/forward/draft).
- * Mendukung lampiran dan file yang sudah tersimpan.
- *
- * @param {Object} payload - Data email yang dikirim.
- * @param {string} payload.to - Tujuan penerima email.
- * @param {string} payload.subject - Subjek email.
- * @param {string} payload.body - Isi pesan email.
- * @param {File[]} [payload.attachments] - Lampiran baru.
- * @param {string[]} [payload.storedAttachments] - Lampiran lama dari draft.
- * @param {string} [payload.draftId] - ID draft (jika update draft).
- * @param {string} [payload.messageId] - ID pesan untuk reply/forward.
- * @returns {Promise<Object>} Respons dari API setelah pengiriman.
- */
-export const sendEmailApi = async ({
-  to,
-  subject,
-  body,
-  attachments,
-  draftId,
-  storedAttachments,
-  messageId,
-}) => {
-  const token = localStorage.getItem("authToken");
-
-  if (!token) {
-    throw new Error("Authentication token not found. Please login again.");
-  }
-
-  const formData = new FormData();
-  formData.append("to", to);
-  formData.append("subject", subject);
-  formData.append("body", body);
-
-  if (draftId) {
-    formData.append("draft_id", draftId);
-  }
-
-  if (messageId) {
-    formData.append("message_id", messageId);
-  }
-
-  if (storedAttachments && storedAttachments.length > 0) {
-    formData.append("stored_attachments", JSON.stringify(storedAttachments));
-  }
-
-  if (attachments && attachments.length > 0) {
-    attachments.forEach((file) => {
-      formData.append("attachments[]", file);
-    });
-  }
-
-  const response = await fetch(`${API_BASE_URL}/emails/send`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
-    },
-    body: formData,
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.message || "Failed to send email");
-  }
-
-  return data;
-};
 
 /**
  * Menyimpan email sebagai draft.

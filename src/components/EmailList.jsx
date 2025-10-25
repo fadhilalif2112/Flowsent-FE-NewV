@@ -37,6 +37,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [showMoveMenu, setShowMoveMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const isStarredFolder = folder?.toLowerCase() === "starred";
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -178,8 +179,13 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
 
           {/* Bulk Actions */}
           {selectedEmailIds.length > 0 && (
-            <div className="flex items-center space-x-1 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-lg px-2 py-1.5 shadow-sm transition-colors">
-              {/* Sembunyikan jumlah selected saat EmailReader terbuka */}
+            <div
+              className={`flex items-center space-x-1 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-lg px-2 py-1.5 shadow-sm transition-colors ${
+                isStarredFolder
+                  ? "opacity-60 pointer-events-none select-none"
+                  : ""
+              }`}
+            >
               {!selectedEmail && (
                 <span className="text-sm font-medium text-indigo-900 dark:text-indigo-200 mr-2 hidden md:block">
                   {selectedEmailIds.length} selected
@@ -195,7 +201,12 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
                 <button
                   key={action}
                   onClick={() => handleBulkAction(action)}
-                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition"
+                  disabled={isStarredFolder}
+                  className={`p-1.5 rounded-lg transition ${
+                    isStarredFolder
+                      ? "text-slate-400 dark:text-slate-600 cursor-not-allowed"
+                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                  }`}
                   title={title}
                 >
                   <Icon className="w-4 h-4" />
@@ -205,14 +216,21 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
               {/* Move */}
               <div className="relative move-menu-container">
                 <button
-                  onClick={() => setShowMoveMenu((prev) => !prev)}
+                  onClick={() =>
+                    !isStarredFolder && setShowMoveMenu((prev) => !prev)
+                  }
+                  disabled={isStarredFolder}
                   title="Move to folder"
-                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition"
+                  className={`p-1.5 rounded-lg transition ${
+                    isStarredFolder
+                      ? "text-slate-400 dark:text-slate-600 cursor-not-allowed"
+                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
+                  }`}
                 >
                   <FolderInput className="w-4 h-4" />
                 </button>
 
-                {showMoveMenu && (
+                {!isStarredFolder && showMoveMenu && (
                   <div className="absolute right-0 mt-2 w-44 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg z-20 py-1">
                     {folders.map((f) => (
                       <button
@@ -240,7 +258,12 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
 
               <button
                 onClick={() => handleBulkAction("delete")}
-                className="p-1.5 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300 transition"
+                disabled={isStarredFolder}
+                className={`p-1.5 rounded-lg transition ${
+                  isStarredFolder
+                    ? "text-red-300 dark:text-red-700 cursor-not-allowed"
+                    : "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300"
+                }`}
                 title="Delete"
               >
                 <Trash2 className="w-4 h-4" />
@@ -269,9 +292,9 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
         ) : (
           filteredEmails.map((email) => (
             <EmailRow
-              key={email.uid}
+              key={email.messageId}
               email={email}
-              isSelected={selectedEmail?.uid === email.uid}
+              isSelected={selectedEmail?.messageId === email.messageId}
               isChecked={selectedEmailIds.includes(email.messageId)}
               onClick={() => onSelectEmail(email)}
               onToggleCheck={() => toggleSelectEmail(email.messageId)}

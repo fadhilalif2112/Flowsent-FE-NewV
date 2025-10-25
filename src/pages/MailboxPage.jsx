@@ -54,19 +54,33 @@ function MailboxPage() {
       const email = emails.find((e) => e.messageId === messageId);
       if (email) {
         setSelectedEmail(email);
-        setReaderOpen(true);
+        if (folder === "draft") {
+          // Buka compose untuk edit draft
+          handleCompose("edit-draft", email);
+          setReaderOpen(false); // Pastikan reader tidak open
+        } else {
+          setReaderOpen(true);
+        }
       }
     } else {
       setSelectedEmail(null);
       setReaderOpen(false);
+      setShowCompose(false); // Tutup compose jika tidak ada messageId
     }
-  }, [messageId, emails]);
+  }, [messageId, emails, folder]); // Tambahkan folder sebagai dependency
 
   // === handler email list ===
   const handleSelectEmail = (email) => {
-    setSelectedEmail(email);
-    setReaderOpen(true);
-    navigate(`/mail/${folder}/${email.messageId}`);
+    setSelectedEmail(email); // Set dulu untuk semua kasus
+    if (folder === "draft") {
+      // buka compose modal dengan isi draft
+      handleCompose("edit-draft", email);
+      navigate(`/mail/${folder}/${email.messageId}`); // Update URL
+    } else {
+      // default: buka email reader
+      setReaderOpen(true);
+      navigate(`/mail/${folder}/${email.messageId}`);
+    }
   };
 
   const handleCloseReader = () => {
@@ -78,17 +92,13 @@ function MailboxPage() {
   // === compose ===
   const handleCompose = (mode = "new", email = null) => {
     setComposeMode(mode);
-    if (mode !== "new" && email) setSelectedEmail(email);
+    setSelectedEmail(email); // simpan email yang diedit
     setShowCompose(true);
+    setReaderOpen(false); // pastikan reader tertutup kalau ada
   };
 
   // === refresh & actions ===
   const handleRefresh = () => refreshEmail(folder);
-
-  const handleEmailAction = async (action, email) => {
-    console.log("Email action:", action, email);
-    await refreshEmail(folder);
-  };
 
   // === pagination ===
   const handlePageChange = (newPage) => setCurrentPage(newPage);
@@ -216,6 +226,7 @@ function MailboxPage() {
               onReply={() => handleCompose("reply", selectedEmail)}
               onReplyAll={() => handleCompose("reply-all", selectedEmail)}
               onForward={() => handleCompose("forward", selectedEmail)}
+              currentFolder={folder}
             />
           </div>
         )}

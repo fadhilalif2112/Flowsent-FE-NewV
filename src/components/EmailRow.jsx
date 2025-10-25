@@ -1,19 +1,29 @@
+// src/components/EmailRow.jsx
 import React from "react";
 import { Star, Reply, Paperclip, Download, Eye } from "lucide-react";
 import { formatDate } from "../utils/formatDate";
 import { getFilePreview } from "../utils/fileUtils";
+import { useEmail } from "../contexts/EmailContext";
 
-function EmailRow({
-  email,
-  isSelected,
-  isChecked,
-  onClick,
-  onToggleCheck,
-  onAction,
-}) {
-  const handleStarClick = (e) => {
+function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
+  const { flagEmail, unflagEmail } = useEmail();
+
+  const handleStarClick = async (e) => {
     e.stopPropagation();
-    onAction(email.flagged ? "unflag" : "flag");
+
+    try {
+      // email.folder bisa undefined kalau email dari starred
+      // jadi fallback ke "inbox"
+      const currentFolder = email.folder || "inbox";
+
+      if (email.flagged) {
+        await unflagEmail([email.messageId], currentFolder);
+      } else {
+        await flagEmail([email.messageId], currentFolder);
+      }
+    } catch (error) {
+      console.error("Failed to toggle star:", error);
+    }
   };
 
   const handleCheckboxClick = (e) => {
