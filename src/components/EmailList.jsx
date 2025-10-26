@@ -17,12 +17,12 @@ import {
 } from "lucide-react";
 import EmailRow from "./EmailRow";
 import ConfirmDialog from "./common/ConfirmDialog";
+import LoadingSpinner from "./common/LoadingSpinner";
 import { useEmail } from "../contexts/EmailContext";
 
 function EmailList({ folder, selectedEmail, onSelectEmail }) {
   const {
     emails,
-    loading,
     pagination,
     selectedEmailIds,
     setSelectedEmailIds,
@@ -32,11 +32,21 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     unflagEmail,
     moveEmail,
     deleteEmails,
+    isAnyActionLoading, // [CHANGE] Added
+    setActionLoading, // [CHANGE] Added
   } = useEmail();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [showMoveMenu, setShowMoveMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [loadingActions, setLoadingActions] = useState({
+    "mark-read": false,
+    "mark-unread": false,
+    star: false,
+    unstar: false,
+    move: false,
+    delete: false,
+  });
   const isStarredFolder = folder?.toLowerCase() === "starred";
 
   useEffect(() => {
@@ -77,34 +87,54 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     const ids = selectedEmailIds;
     if (ids.length === 0) return;
 
-    switch (action) {
-      case "mark-read":
-        await markAsRead(ids, folder);
-        break;
-      case "mark-unread":
-        await markAsUnread(ids, folder);
-        break;
-      case "star":
-        await flagEmail(ids, folder);
-        break;
-      case "unstar":
-        await unflagEmail(ids, folder);
-        break;
-      case "move":
-        await moveEmail(ids, targetFolder, folder);
-        break;
-      case "delete":
-        setConfirmDelete(true);
-        break;
-      default:
-        console.log("Unknown action:", action);
+    setLoadingActions((prev) => ({ ...prev, [action]: true }));
+    setActionLoading(true); // [CHANGE] Set global loading
+    try {
+      switch (action) {
+        case "mark-read":
+          await markAsRead(ids, folder);
+          break;
+        case "mark-unread":
+          await markAsUnread(ids, folder);
+          break;
+        case "star":
+          await flagEmail(ids, folder);
+          break;
+        case "unstar":
+          await unflagEmail(ids, folder);
+          break;
+        case "move":
+          await moveEmail(ids, targetFolder, folder);
+          break;
+        case "delete":
+          setConfirmDelete(true);
+          break;
+        default:
+          console.log("Unknown action:", action);
+      }
+    } catch (err) {
+      console.error(`Error in ${action}:`, err);
+    } finally {
+      if (action !== "delete") {
+        setLoadingActions((prev) => ({ ...prev, [action]: false }));
+        setActionLoading(false); // [CHANGE] Reset global loading
+      }
     }
   };
 
   const confirmDeleteAction = async () => {
-    setConfirmDelete(false);
-    await deleteEmails(selectedEmailIds);
-    setSelectedEmailIds([]);
+    setLoadingActions((prev) => ({ ...prev, delete: true }));
+    setActionLoading(true); // [CHANGE] Set global loading
+    try {
+      await deleteEmails(selectedEmailIds);
+      setSelectedEmailIds([]);
+    } catch (err) {
+      console.error("Delete error:", err);
+    } finally {
+      setConfirmDelete(false);
+      setLoadingActions((prev) => ({ ...prev, delete: false }));
+      setActionLoading(false); // [CHANGE] Reset global loading
+    }
   };
 
   const getBodyAsString = (body) => {
@@ -140,7 +170,6 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
             onChange={handleSelectAll}
             className="w-4 h-4 text-indigo-600 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 rounded focus:ring-indigo-500 focus:ring-2 cursor-pointer"
           />
-          {/* Sembunyikan folder dan pagination saat EmailReader terbuka dan toolbar aktif */}
           {!selectedEmail || selectedEmailIds.length === 0 ? (
             <>
               <h2 className="text-base sm:text-lg font-semibold capitalize">
@@ -155,9 +184,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
           ) : null}
         </div>
 
-        {/* Right Toolbar */}
         <div className="flex items-center gap-2 flex-1 justify-end">
-          {/* Search */}
           <div className="relative flex items-center ml-auto w-full max-w-[300px]">
             <Search className="w-4 h-4 absolute left-3 text-slate-400 dark:text-slate-500" />
             <input
@@ -177,7 +204,6 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
             )}
           </div>
 
-          {/* Bulk Actions */}
           {selectedEmailIds.length > 0 && (
             <div
               className={`flex items-center space-x-1 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-lg px-2 py-1.5 shadow-sm transition-colors ${
@@ -193,41 +219,76 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
               )}
 
               {[
-                { action: "mark-read", icon: MailOpen, title: "Mark as read" },
-                { action: "mark-unread", icon: Mail, title: "Mark as unread" },
-                { action: "star", icon: Star, title: "Star" },
-                { action: "unstar", icon: StarOff, title: "Unstar" },
-              ].map(({ action, icon: Icon, title }) => (
+                {
+                  action: "mark-read",
+                  icon: MailOpen,
+                  title: "Mark as read",
+                  message: "Marking as read...",
+                },
+                {
+                  action: "mark-unread",
+                  icon: Mail,
+                  title: "Mark as unread",
+                  message: "Marking as unread...",
+                },
+                {
+                  action: "star",
+                  icon: Star,
+                  title: "Star",
+                  message: "Starring...",
+                },
+                {
+                  action: "unstar",
+                  icon: StarOff,
+                  title: "Unstar",
+                  message: "Unstarring...",
+                },
+              ].map(({ action, icon: Icon, title, message }) => (
                 <button
                   key={action}
                   onClick={() => handleBulkAction(action)}
-                  disabled={isStarredFolder}
+                  disabled={
+                    isStarredFolder ||
+                    loadingActions[action] ||
+                    isAnyActionLoading
+                  } // [CHANGE] Added isAnyActionLoading
                   className={`p-1.5 rounded-lg transition ${
-                    isStarredFolder
+                    isStarredFolder ||
+                    loadingActions[action] ||
+                    isAnyActionLoading
                       ? "text-slate-400 dark:text-slate-600 cursor-not-allowed"
                       : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
                   }`}
                   title={title}
                 >
-                  <Icon className="w-4 h-4" />
+                  {loadingActions[action] ? (
+                    <LoadingSpinner message={message} />
+                  ) : (
+                    <Icon className="w-4 h-4" />
+                  )}
                 </button>
               ))}
 
-              {/* Move */}
               <div className="relative move-menu-container">
                 <button
                   onClick={() =>
                     !isStarredFolder && setShowMoveMenu((prev) => !prev)
                   }
-                  disabled={isStarredFolder}
+                  disabled={
+                    isStarredFolder || loadingActions.move || isAnyActionLoading
+                  } // [CHANGE] Added isAnyActionLoading
                   title="Move to folder"
                   className={`p-1.5 rounded-lg transition ${
-                    isStarredFolder
+                    isStarredFolder || loadingActions.move || isAnyActionLoading
                       ? "text-slate-400 dark:text-slate-600 cursor-not-allowed"
                       : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
                   }`}
                 >
-                  <FolderInput className="w-4 h-4" />
+                  {loadingActions.move ? (
+                    <LoadingSpinner message="Moving..." />
+                  ) : (
+                    <FolderInput className="w-4 h-4" />
+                  )}
                 </button>
 
                 {!isStarredFolder && showMoveMenu && (
@@ -240,9 +301,15 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
                           handleBulkAction("move", f.id);
                           setShowMoveMenu(false);
                         }}
-                        disabled={f.id === folder}
+                        disabled={
+                          f.id === folder ||
+                          loadingActions.move ||
+                          isAnyActionLoading
+                        } // [CHANGE] Added isAnyActionLoading
                         className={`w-full text-left px-4 py-2 text-sm transition ${
-                          f.id === folder
+                          f.id === folder ||
+                          loadingActions.move ||
+                          isAnyActionLoading
                             ? "text-slate-400 dark:text-slate-600 cursor-not-allowed"
                             : "text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-slate-800"
                         }`}
@@ -258,15 +325,21 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
 
               <button
                 onClick={() => handleBulkAction("delete")}
-                disabled={isStarredFolder}
+                disabled={
+                  isStarredFolder || loadingActions.delete || isAnyActionLoading
+                } // [CHANGE] Added isAnyActionLoading
                 className={`p-1.5 rounded-lg transition ${
-                  isStarredFolder
+                  isStarredFolder || loadingActions.delete || isAnyActionLoading
                     ? "text-red-300 dark:text-red-700 cursor-not-allowed"
                     : "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300"
                 }`}
                 title="Delete"
               >
-                <Trash2 className="w-4 h-4" />
+                {loadingActions.delete ? (
+                  <LoadingSpinner message="Deleting..." />
+                ) : (
+                  <Trash2 className="w-4 h-4" />
+                )}
               </button>
             </div>
           )}
@@ -275,10 +348,9 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
 
       {/* Email list */}
       <div className="flex-1 overflow-y-auto">
-        {loading ? (
+        {emails.length === 0 && !pagination ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mb-3" />
-            <p>Loading emails...</p>
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
           </div>
         ) : filteredEmails.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-2">

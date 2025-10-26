@@ -8,13 +8,13 @@ import EmailReader from "../components/EmailReader";
 import ComposeModal from "../components/ComposeModal";
 import UserDropdown from "../components/UserDropdown";
 import Pagination from "../components/Pagination";
+import LoadingSpinner from "../components/common/LoadingSpinner";
 import { useEmail } from "../contexts/EmailContext";
 
 function MailboxPage() {
   const { folder = "inbox", messageId } = useParams();
   const navigate = useNavigate();
 
-  // === ambil state & function dari EmailContext ===
   const {
     emails,
     allEmails,
@@ -26,38 +26,36 @@ function MailboxPage() {
     setCurrentPage,
     setPerPage,
     setSelectedEmailIds,
+    isAnyActionLoading, // [CHANGE] Added
+    setActionLoading, // [CHANGE] Added
   } = useEmail();
 
-  // === local UI state ===
   const [selectedEmail, setSelectedEmail] = useState(null);
   const [showCompose, setShowCompose] = useState(false);
   const [composeMode, setComposeMode] = useState("new");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // === Load emails sekali saat halaman dimuat ===
   useEffect(() => {
     fetchEmail(folder, currentPage, perPage, true);
   }, []);
 
-  // === Update tampilan saat folder, page, atau data berubah ===
   useEffect(() => {
     if (allEmails.length > 0) {
       fetchEmail(folder, currentPage, perPage);
     }
   }, [folder, currentPage, perPage, allEmails]);
 
-  // === buka email berdasarkan URL param (messageId) ===
   useEffect(() => {
     if (messageId && emails.length > 0) {
       const email = emails.find((e) => e.messageId === messageId);
       if (email) {
         setSelectedEmail(email);
         if (folder === "draft") {
-          // Buka compose untuk edit draft
           handleCompose("edit-draft", email);
-          setReaderOpen(false); // Pastikan reader tidak open
+          setReaderOpen(false);
         } else {
           setReaderOpen(true);
         }
@@ -65,19 +63,16 @@ function MailboxPage() {
     } else {
       setSelectedEmail(null);
       setReaderOpen(false);
-      setShowCompose(false); // Tutup compose jika tidak ada messageId
+      setShowCompose(false);
     }
-  }, [messageId, emails, folder]); // Tambahkan folder sebagai dependency
+  }, [messageId, emails, folder]);
 
-  // === handler email list ===
   const handleSelectEmail = (email) => {
-    setSelectedEmail(email); // Set dulu untuk semua kasus
+    setSelectedEmail(email);
     if (folder === "draft") {
-      // buka compose modal dengan isi draft
       handleCompose("edit-draft", email);
-      navigate(`/mail/${folder}/${email.messageId}`); // Update URL
+      navigate(`/mail/${folder}/${email.messageId}`);
     } else {
-      // default: buka email reader
       setReaderOpen(true);
       navigate(`/mail/${folder}/${email.messageId}`);
     }
@@ -89,25 +84,32 @@ function MailboxPage() {
     navigate(`/mail/${folder}`);
   };
 
-  // === compose ===
   const handleCompose = (mode = "new", email = null) => {
     setComposeMode(mode);
-    setSelectedEmail(email); // simpan email yang diedit
+    setSelectedEmail(email);
     setShowCompose(true);
-    setReaderOpen(false); // pastikan reader tertutup kalau ada
+    setReaderOpen(false);
   };
 
-  // === refresh & actions ===
-  const handleRefresh = () => refreshEmail(folder);
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setActionLoading(true); // [CHANGE] Set global loading
+    try {
+      await refreshEmail(folder);
+    } catch (err) {
+      console.error("Refresh error:", err);
+    } finally {
+      setIsRefreshing(false);
+      setActionLoading(false); // [CHANGE] Reset global loading
+    }
+  };
 
-  // === pagination ===
   const handlePageChange = (newPage) => setCurrentPage(newPage);
   const handlePerPageChange = (newPerPage) => {
     setPerPage(newPerPage);
     setCurrentPage(1);
   };
 
-  // === folder change ===
   const handleFolderChange = (newFolder) => {
     navigate(`/mail/${newFolder}`);
     setCurrentPage(1);
@@ -118,10 +120,8 @@ function MailboxPage() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-slate-100 dark:bg-slate-900">
-      {/* Header */}
       <header className="bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between shadow-sm z-50">
         <div className="flex items-center space-x-3">
-          {/* Mobile Sidebar Toggle */}
           <button
             onClick={() => setSidebarOpen((s) => !s)}
             className="lg:hidden text-slate-600 hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800 p-2 rounded-lg transition"
@@ -129,8 +129,6 @@ function MailboxPage() {
           >
             <Menu className="w-5 h-5" />
           </button>
-
-          {/* Desktop Collapse Toggle */}
           <button
             onClick={() => setSidebarCollapsed((c) => !c)}
             className="hidden lg:flex text-slate-600 hover:bg-slate-100 dark:text-white dark:hover:bg-slate-800 p-2 rounded-lg transition"
@@ -142,8 +140,6 @@ function MailboxPage() {
               <PanelRight className="w-5 h-5" />
             )}
           </button>
-
-          {/* Logo */}
           <div className="flex items-center space-x-1">
             <div className="rounded-lg">
               <img src="/logo.png" alt="logo" className="w-7 h-7" />
@@ -153,23 +149,24 @@ function MailboxPage() {
             </h1>
           </div>
         </div>
-
         <div className="flex items-center space-x-2">
           <button
             onClick={handleRefresh}
-            className="text-slate-500 hover:text-slate-700 dark:text-slate-300 dark:hover:text-white p-2 rounded-lg transition"
+            disabled={isRefreshing || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
+            className="text-slate-500 hover:text-slate-700 dark:text-slate-300 dark:hover:text-white p-2 rounded-lg transition disabled:opacity-50"
             aria-label="Refresh"
           >
-            <RefreshCw className="w-4 h-4" />
+            {isRefreshing ? (
+              <LoadingSpinner message="Refreshing..." />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
           </button>
-
           <UserDropdown />
         </div>
       </header>
 
-      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Sidebar */}
         <div
           className={`${
             sidebarOpen ? "translate-x-0" : "-translate-x-full"
@@ -183,16 +180,12 @@ function MailboxPage() {
             onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
           />
         </div>
-
-        {/* Overlay for mobile */}
         {sidebarOpen && (
           <div
             className="fixed inset-0 top-[73px] bg-black/35 dark:bg-black/45 backdrop-blur-[1.5px] z-20 lg:hidden transition-all"
             onClick={() => setSidebarOpen(false)}
           />
         )}
-
-        {/* Email List + Pagination */}
         <div
           className={`flex flex-col flex-1 overflow-hidden ${
             readerOpen ? "hidden lg:flex lg:flex-none lg:w-96" : "flex"
@@ -204,7 +197,6 @@ function MailboxPage() {
             onSelectEmail={handleSelectEmail}
             isReaderOpen={readerOpen}
           />
-
           {pagination && pagination.total > 0 && (
             <Pagination
               pagination={pagination}
@@ -216,8 +208,6 @@ function MailboxPage() {
             />
           )}
         </div>
-
-        {/* Email Reader */}
         {readerOpen && selectedEmail && (
           <div className="fixed lg:relative inset-0 lg:inset-auto z-20 lg:z-0 w-full lg:flex-1 flex flex-col bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700">
             <EmailReader
@@ -232,7 +222,6 @@ function MailboxPage() {
         )}
       </div>
 
-      {/* Compose Modal */}
       {showCompose && (
         <ComposeModal
           mode={composeMode}

@@ -9,7 +9,6 @@ import {
   moveEmailApi,
   deletePermanentApi,
 } from "../services/api";
-import Loading from "../components/common/Loading";
 import Notification from "../components/common/Notification";
 
 const EmailContext = createContext();
@@ -19,13 +18,13 @@ export function EmailProvider({ children }) {
   // === STATE ===
   const [allEmails, setAllEmails] = useState([]); // Semua email (dari semua folder)
   const [emails, setEmails] = useState([]); // Email aktif (folder yang sedang dibuka)
-  const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState("Loading emails...");
   const [pagination, setPagination] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [selectedEmailIds, setSelectedEmailIds] = useState([]);
   const [notification, setNotification] = useState(null);
+  // [CHANGE] Added global loading state for any action
+  const [isAnyActionLoading, setActionLoading] = useState(false);
 
   // === UTILS: PAGINASI CLIENT-SIDE ===
   const paginateEmails = (folderEmails, page, perPage) => {
@@ -56,7 +55,6 @@ export function EmailProvider({ children }) {
     limit = perPage,
     forceRefresh = false
   ) => {
-    setLoading(true);
     try {
       if (!allEmails.length || forceRefresh) {
         const response = await fetchEmailsApi(forceRefresh);
@@ -102,8 +100,6 @@ export function EmailProvider({ children }) {
     } catch (err) {
       console.error("Error fetching emails:", err);
       showNotification(err.message || "Gagal memuat email", "error");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -111,11 +107,8 @@ export function EmailProvider({ children }) {
   const refreshEmail = async (folder) => {
     try {
       await fetchEmail(folder, currentPage, perPage, true);
-      setLoadingMessage("Loading emails...");
     } catch (err) {
       console.error("Error refreshing emails:", err);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -126,8 +119,7 @@ export function EmailProvider({ children }) {
 
   // === HANDLERS ===
   const markAsRead = async (emailIds, currentFolder) => {
-    setLoading(true);
-    setLoadingMessage("Marking as read...");
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
       for (const id of emailIds) {
         await markAsReadApi(currentFolder, id);
@@ -138,13 +130,12 @@ export function EmailProvider({ children }) {
       console.error("Error marking as read:", err);
       showNotification("Gagal menandai sebagai sudah dibaca", "error");
     } finally {
-      setLoading(false);
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
   const markAsUnread = async (emailIds, currentFolder) => {
-    setLoading(true);
-    setLoadingMessage("Marking as unread...");
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
       for (const id of emailIds) {
         await markAsUnreadApi(currentFolder, id);
@@ -158,13 +149,12 @@ export function EmailProvider({ children }) {
       console.error("Error marking as unread:", err);
       showNotification("Gagal menandai sebagai belum dibaca", "error");
     } finally {
-      setLoading(false);
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
   const flagEmail = async (emailIds, currentFolder) => {
-    setLoading(true);
-    setLoadingMessage("Flagging email...");
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
       for (const id of emailIds) {
         await markAsFlaggedApi(currentFolder, id);
@@ -175,13 +165,12 @@ export function EmailProvider({ children }) {
       console.error("Error flagging email:", err);
       showNotification("Gagal menandai bendera", "error");
     } finally {
-      setLoading(false);
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
   const unflagEmail = async (emailIds, currentFolder) => {
-    setLoading(true);
-    setLoadingMessage("Unflagging email...");
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
       for (const id of emailIds) {
         await markAsUnflaggedApi(currentFolder, id);
@@ -192,13 +181,12 @@ export function EmailProvider({ children }) {
       console.error("Error unflagging email:", err);
       showNotification("Gagal menghapus bendera", "error");
     } finally {
-      setLoading(false);
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
   const moveEmail = async (emailIds, targetFolder, currentFolder) => {
-    setLoading(true);
-    setLoadingMessage(`Moving email(s) to ${targetFolder}...`);
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
       const response = await moveEmailApi(
         currentFolder,
@@ -225,13 +213,12 @@ export function EmailProvider({ children }) {
       if (err.message.includes("500")) errorMsg += " – Server error";
       showNotification(errorMsg, "error");
     } finally {
-      setLoading(false);
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
   const deleteEmails = async (emailIds) => {
-    setLoading(true);
-    setLoadingMessage("Deleting email...");
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
       const response = await deletePermanentApi(emailIds);
       if (response.success) {
@@ -244,23 +231,18 @@ export function EmailProvider({ children }) {
       console.error(err);
       showNotification("Gagal menghapus email", "error");
     } finally {
-      setLoading(false);
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
   // === PROVIDER VALUE ===
   const value = {
     emails,
-    loading,
-    loadingMessage,
     pagination,
     currentPage,
     perPage,
     selectedEmailIds,
     allEmails,
-
-    setLoading,
-    setLoadingMessage,
     fetchEmail,
     refreshEmail,
     markAsRead,
@@ -270,18 +252,16 @@ export function EmailProvider({ children }) {
     moveEmail,
     deleteEmails,
     showNotification,
-
     setCurrentPage,
     setPerPage,
     setSelectedEmailIds,
+    isAnyActionLoading, // [CHANGE] Added to context
+    setActionLoading, // [CHANGE] Added to context
   };
 
   return (
     <EmailContext.Provider value={value}>
       {children}
-
-      {loading && <Loading message={loadingMessage} />}
-
       {notification && (
         <Notification
           message={notification.message}

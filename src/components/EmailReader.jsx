@@ -10,15 +10,24 @@ import {
   FolderInput,
   Trash2,
   Download,
+  Mail,
 } from "lucide-react";
 import { formatDate } from "../utils/formatDate";
 import { getFilePreview } from "../utils/fileUtils";
 import { useEmail } from "../contexts/EmailContext";
 import ConfirmDialog from "../components/common/ConfirmDialog";
+import LoadingSpinner from "./common/LoadingSpinner";
 
 function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false);
+  const [loadingActions, setLoadingActions] = useState({
+    flag: false,
+    unflag: false,
+    "mark-read": false,
+    "mark-unread": false,
+    move: false,
+    delete: false,
+  });
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const {
@@ -29,12 +38,12 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
     moveEmail,
     deleteEmails,
     refreshEmail,
+    isAnyActionLoading, // [CHANGE] Added
+    setActionLoading, // [CHANGE] Added
   } = useEmail();
 
   const folders = [
     { id: "inbox", name: "Inbox" },
-    { id: "draft", name: "Drafts" },
-    { id: "sent", name: "Sent" },
     { id: "starred", name: "Starred" },
     { id: "archive", name: "Archive" },
     { id: "junk", name: "Junk" },
@@ -48,34 +57,52 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
   /* 1. Toggle Star (flag / unflag)                                      */
   /* ------------------------------------------------------------------ */
   const handleToggleStar = async () => {
-    setActionLoading(true);
+    const action = email.flagged ? "unflag" : "flag";
+    setLoadingActions((prev) => ({ ...prev, [action]: true }));
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
       if (email.flagged) {
-        await unflagEmail([emailId], currentFolder); // ← currentFolder wajib
+        await unflagEmail([emailId], currentFolder);
       } else {
-        await flagEmail([emailId], currentFolder); // ← currentFolder wajib
+        await flagEmail([emailId], currentFolder);
       }
       await refreshEmail(currentFolder);
     } catch (err) {
       console.error("Toggle flag error:", err);
     } finally {
-      setActionLoading(false);
+      setLoadingActions((prev) => ({ ...prev, [action]: false }));
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
   /* ------------------------------------------------------------------ */
-  /* 2. Mark as Unread                                                   */
+  /* 2. Mark as Unread & Mark as Read                                   */
   /* ------------------------------------------------------------------ */
   const handleMarkAsUnread = async () => {
-    setActionLoading(true);
+    setLoadingActions((prev) => ({ ...prev, "mark-unread": true }));
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
-      // Jika backend belum punya endpoint, tetap panggil dummy
       await markAsUnread([emailId], currentFolder);
       await refreshEmail(currentFolder);
     } catch (err) {
       console.error("Mark as unread error:", err);
     } finally {
-      setActionLoading(false);
+      setLoadingActions((prev) => ({ ...prev, "mark-unread": false }));
+      setActionLoading(false); // [CHANGE] Reset global loading
+    }
+  };
+
+  const handleMarkAsRead = async () => {
+    setLoadingActions((prev) => ({ ...prev, "mark-read": true }));
+    setActionLoading(true); // [CHANGE] Set global loading
+    try {
+      await markAsRead([emailId], currentFolder);
+      await refreshEmail(currentFolder);
+    } catch (err) {
+      console.error("Mark as read error:", err);
+    } finally {
+      setLoadingActions((prev) => ({ ...prev, "mark-read": false }));
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
@@ -85,15 +112,17 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
   const handleMove = async (targetFolder) => {
     if (targetFolder === currentFolder) return;
     setShowMoveMenu(false);
-    setActionLoading(true);
+    setLoadingActions((prev) => ({ ...prev, move: true }));
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
-      await moveEmail([emailId], targetFolder, currentFolder); // ← 3 argumen
+      await moveEmail([emailId], targetFolder, currentFolder);
       await refreshEmail(currentFolder);
-      onClose(); // tutup reader setelah berhasil pindah
+      onClose();
     } catch (err) {
       console.error("Move error:", err);
     } finally {
-      setActionLoading(false);
+      setLoadingActions((prev) => ({ ...prev, move: false }));
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
@@ -102,8 +131,8 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
   /* ------------------------------------------------------------------ */
   const handleDelete = () => setConfirmDelete(true);
   const confirmDeleteAction = async () => {
-    setConfirmDelete(false);
-    setActionLoading(true);
+    setLoadingActions((prev) => ({ ...prev, delete: true }));
+    setActionLoading(true); // [CHANGE] Set global loading
     try {
       await deleteEmails([emailId]);
       await refreshEmail(currentFolder);
@@ -111,7 +140,9 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
     } catch (err) {
       console.error("Delete error:", err);
     } finally {
-      setActionLoading(false);
+      setConfirmDelete(false);
+      setLoadingActions((prev) => ({ ...prev, delete: false }));
+      setActionLoading(false); // [CHANGE] Reset global loading
     }
   };
 
@@ -137,7 +168,6 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
     <div className="flex flex-col h-full bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/40 shadow-sm">
-        {/* Mobile close */}
         <button
           onClick={onClose}
           className="lg:hidden text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -146,7 +176,6 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
         </button>
 
         <div className="flex items-center space-x-1">
-          {/* Reply / ReplyAll / Forward */}
           <button
             onClick={onReply}
             title="Reply"
@@ -171,38 +200,65 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
 
           <div className="w-px h-5 bg-slate-300 dark:bg-slate-700 mx-1" />
 
-          {/* Star */}
           <button
             onClick={handleToggleStar}
-            disabled={actionLoading}
+            disabled={
+              loadingActions.flag || loadingActions.unflag || isAnyActionLoading
+            } // [CHANGE] Added isAnyActionLoading
             title={email.flagged ? "Unflag" : "Flag"}
             className="p-2 text-slate-600 dark:text-slate-400 hover:text-amber-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
           >
-            <Star
-              className={`w-5 h-5 ${
-                email.flagged ? "text-amber-500 fill-amber-500" : ""
-              }`}
-            />
+            {loadingActions.flag || loadingActions.unflag ? (
+              <LoadingSpinner
+                message={email.flagged ? "Unflagging..." : "Flagging..."}
+              />
+            ) : (
+              <Star
+                className={`w-5 h-5 ${
+                  email.flagged ? "text-amber-500 fill-amber-500" : ""
+                }`}
+              />
+            )}
           </button>
 
-          {/* Mark as Unread */}
+          <button
+            onClick={handleMarkAsRead}
+            disabled={loadingActions["mark-read"] || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
+            title="Mark as Read"
+            className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loadingActions["mark-read"] ? (
+              <LoadingSpinner message="Marking as read..." />
+            ) : (
+              <MailOpen className="w-5 h-5" />
+            )}
+          </button>
+
           <button
             onClick={handleMarkAsUnread}
-            disabled={actionLoading}
+            disabled={loadingActions["mark-unread"] || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
             title="Mark as Unread"
             className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
           >
-            <MailOpen className="w-5 h-5" />
+            {loadingActions["mark-unread"] ? (
+              <LoadingSpinner message="Marking as unread..." />
+            ) : (
+              <Mail className="w-5 h-5" />
+            )}
           </button>
 
-          {/* Move */}
           <div className="relative">
             <button
               onClick={() => setShowMoveMenu((s) => !s)}
+              disabled={loadingActions.move || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
               title="Move"
-              className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+              className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
             >
-              <FolderInput className="w-5 h-5" />
+              {loadingActions.move ? (
+                <LoadingSpinner message="Moving..." />
+              ) : (
+                <FolderInput className="w-5 h-5" />
+              )}
             </button>
 
             {showMoveMenu && (
@@ -211,9 +267,15 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
                   <button
                     key={f.id}
                     onClick={() => handleMove(f.id)}
-                    disabled={actionLoading || f.id === currentFolder}
+                    disabled={
+                      loadingActions.move ||
+                      f.id === currentFolder ||
+                      isAnyActionLoading
+                    } // [CHANGE] Added isAnyActionLoading
                     className={`w-full text-left px-4 py-2 text-sm transition ${
-                      f.id === currentFolder
+                      f.id === currentFolder ||
+                      loadingActions.move ||
+                      isAnyActionLoading
                         ? "text-slate-400 dark:text-slate-600 cursor-not-allowed"
                         : "text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-slate-800"
                     }`}
@@ -225,18 +287,20 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
             )}
           </div>
 
-          {/* Delete */}
           <button
             onClick={handleDelete}
-            disabled={actionLoading}
+            disabled={loadingActions.delete || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
             title="Delete"
             className="p-2 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
           >
-            <Trash2 className="w-5 h-5" />
+            {loadingActions.delete ? (
+              <LoadingSpinner message="Deleting..." />
+            ) : (
+              <Trash2 className="w-5 h-5" />
+            )}
           </button>
         </div>
 
-        {/* Desktop close */}
         <button
           onClick={onClose}
           className="hidden lg:block text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -360,7 +424,7 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
           variant="danger"
           onConfirm={confirmDeleteAction}
           onCancel={() => setConfirmDelete(false)}
-          loading={actionLoading}
+          loading={loadingActions.delete}
         />
       )}
     </div>
