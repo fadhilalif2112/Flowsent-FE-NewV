@@ -6,7 +6,9 @@
 
 import axios from "axios";
 
-// Secure Token Manager
+// ==========================================================
+// SECURE TOKEN MANAGER
+// ==========================================================
 class TokenManager {
   /**
    * Retrieves the authentication token from session storage.
@@ -87,7 +89,9 @@ class TokenManager {
 
 const API_BASE_URL = "http://127.0.0.1:8000/api";
 
-// Membuat instance Axios dengan konfigurasi dasar (hapus Content-Type default untuk hindari konflik dengan FormData)
+// ==========================================================
+// AXIOS CLIENT SETUP
+// ==========================================================
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -95,43 +99,71 @@ const apiClient = axios.create({
   },
 });
 
-// Interceptor untuk menangani 401 Unauthorized
+// ==========================================================
+// TOKEN RETRY HANDLING
+// ==========================================================
+let refreshFailCount = 0;
+const MAX_REFRESH_RETRIES = 2;
+
+// ==========================================================
+// INTERCEPTOR: HANDLE 401 UNAUTHORIZED
+// ==========================================================
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
 
-    // Skip retry jika ini request refresh itu sendiri untuk hindari loop
+    // Skip jika request ke /refresh sendiri → hindari loop
     if (originalRequest.url === "/refresh") {
       TokenManager.clearToken();
+      console.warn("Refresh request itself failed — forcing logout.");
+      window.location.href = "/login";
       return Promise.reject(
         new Error("Refresh token invalid. Please login again.")
       );
     }
 
+    // Handle 401 dengan retry sekali
     if (error.response?.status === 401 && !originalRequest._retry) {
-      originalRequest._retry = true; // Tandai agar tidak loop tak terbatas
+      originalRequest._retry = true;
       try {
         const newToken = await refreshTokenApi();
-        // Update header Authorization di original request
         originalRequest.headers["Authorization"] = `Bearer ${newToken}`;
-        // Retry request dengan token baru
         return apiClient(originalRequest);
       } catch (refreshError) {
-        // Jika refresh gagal, hapus token dan lempar error
-        TokenManager.clearToken();
-        console.error("Refresh token failed:", refreshError); // Tambah logging untuk debug
-        return Promise.reject(
-          new Error("Session expired. Please login again.")
+        refreshFailCount += 1;
+        console.warn(
+          `Refresh attempt failed (${refreshFailCount}/${MAX_REFRESH_RETRIES})`,
+          refreshError
         );
+
+        if (refreshFailCount >= MAX_REFRESH_RETRIES) {
+          console.error("Too many refresh failures — clearing session.");
+          TokenManager.clearToken();
+          alert("Session expired. Please login again.");
+          window.location.href = "/login";
+        }
+
+        return Promise.reject(refreshError);
       }
     }
 
-    // Jika bukan 401 atau refresh gagal, lempar error asli
+    // Jangan hapus token kalau bukan 401 (misal 403, 404, 500)
+    if (error.response && error.response.status !== 401) {
+      console.error(
+        `API request failed [${error.response.status}]:`,
+        error.message
+      );
+      return Promise.reject(error);
+    }
+
     return Promise.reject(error);
   }
 );
 
+// ==========================================================
+// AUTHENTICATION HELPERS
+// ==========================================================
 /**
  * Mengambil header otentikasi standar untuk setiap permintaan API.
  * Termasuk token Bearer jika tersedia dari TokenManager.
@@ -142,7 +174,6 @@ apiClient.interceptors.response.use(
 const getAuthHeaders = async () => {
   let token = TokenManager.getToken();
   if (!token) {
-    // Jika token hilang atau expired, coba refresh dulu
     try {
       token = await refreshTokenApi();
     } catch (err) {
@@ -158,34 +189,20 @@ const getAuthHeaders = async () => {
 // ==========================================================
 // AUTHENTICATION (Sesuai AuthController + SecureJWTHandler)
 // ==========================================================
-
-/**
- * Login ke sistem.
- * Backend mengembalikan:
- * {
- *   user: { id, email, name },
- *   tokens: { access_token, refresh_token }
- * }
- *
- * @param {string} email - Email pengguna untuk login.
- * @param {string} password - Password pengguna untuk login.
- * @returns {Promise<Object>} Objek berisi user dan token jika login berhasil.
- * @throws {Error} Jika login gagal atau respons tidak sesuai.
- */
 export const login = async (email, password) => {
   try {
     const response = await apiClient.post("/login", { email, password });
     const data = response.data;
 
-    // Pastikan struktur sesuai backend
     if (!data.tokens?.access_token) {
       throw new Error("Token tidak ditemukan di respons");
     }
 
-    // Simpan access token, refresh token, dan user info
     TokenManager.setToken(data.tokens.access_token);
     TokenManager.setRefreshToken(data.tokens.refresh_token);
     TokenManager.setUser(data.user);
+
+    refreshFailCount = 0; // reset counter setelah login berhasil
 
     return {
       user: data.user,
@@ -216,15 +233,22 @@ export const refreshTokenApi = async () => {
 
     const data = response.data;
     TokenManager.setToken(data.tokens.access_token);
-    TokenManager.setRefreshToken(data.tokens.refresh_token); // Update refresh token
+    TokenManager.setRefreshToken(data.tokens.refresh_token);
+
+    refreshFailCount = 0; // reset retry counter jika refresh berhasil
+
     return data.tokens.access_token;
   } catch (err) {
-    if (err.response?.data?.message === "refresh_token_expired") {
+    const message = err.response?.data?.message;
+    console.warn("Refresh token failed:", message || err.message);
+
+    if (message === "refresh_token_expired") {
       TokenManager.clearToken();
-      // Redirect ke login atau trigger event logout
-      window.location.href = "/login"; // Contoh redirect, sesuaikan dengan routing React Anda
+      alert("Session expired. Please login again.");
+      window.location.href = "/login";
     }
-    throw new Error(err.response?.data?.message || "Refresh failed");
+
+    throw new Error(message || "Refresh failed");
   }
 };
 
@@ -236,8 +260,6 @@ export const refreshTokenApi = async () => {
  */
 export const logout = async () => {
   const token = TokenManager.getToken();
-
-  // Hapus token lokal
   TokenManager.clearToken();
 
   if (!token) {
@@ -251,14 +273,12 @@ export const logout = async () => {
         Accept: "application/json",
       },
     });
-
     return response.data;
   } catch (err) {
     console.warn("Logout request failed, but token already cleared:", err);
     return { message: "Logged out locally" };
   }
 };
-
 // ==========================================================
 // EMAIL MANAGEMENT
 // ==========================================================
@@ -287,7 +307,7 @@ export const fetchEmailsApi = async (forceRefresh = false) => {
  *
  * @param {string|number} uid - UID email.
  * @param {string} filename - Nama file lampiran.
- * @throws {Error} Jika token tidak ditemukan atau request gagal.
+ * @throws {Error} Jika request gagal.
  */
 export const downloadAttachmentApi = async (uid, filename) => {
   const headers = await getAuthHeaders();
@@ -309,6 +329,51 @@ export const downloadAttachmentApi = async (uid, filename) => {
   document.body.appendChild(link);
   link.click();
   link.remove();
+};
+
+/**
+ * Menampilkan preview lampiran email.
+ * Jika ekstensi file tidak mendukung preview, fungsi akan mengembalikan fallback untuk download.
+ *
+ * @param {string|number} uid - UID email.
+ * @param {string} filename - Nama file lampiran.
+ * @returns {Promise<Object>} Objek berisi URL preview, MIME type, filename, atau fallbackDownload jika tidak bisa di-preview.
+ * @throws {Error} Jika request gagal.
+ */
+export const previewAttachmentApi = async (uid, filename) => {
+  const headers = await getAuthHeaders();
+
+  const ext = filename.split(".").pop().toLowerCase();
+  const previewable = [
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "webp",
+    "pdf",
+    "txt",
+    "md",
+    "mov",
+    "mp4",
+  ];
+
+  // Jika tidak bisa di-preview → kembalikan flag fallback
+  if (!previewable.includes(ext)) {
+    return { fallbackDownload: true };
+  }
+
+  const response = await apiClient.get(
+    `/emails/attachments/${uid}/preview/${encodeURIComponent(filename)}`,
+    {
+      headers,
+      responseType: "blob",
+    }
+  );
+
+  const blob = response.data;
+  const url = URL.createObjectURL(blob);
+
+  return { url, mimeType: blob.type, filename, fallbackDownload: false };
 };
 
 // ==========================================================
@@ -455,7 +520,7 @@ export const deletePermanentApi = async (messageIds) => {
 };
 
 // ==========================================================
-// SEND, DRAFTS & ATTACHMENTS
+// SEND & DRAFTS
 // ==========================================================
 
 /**
@@ -571,38 +636,4 @@ export const saveDraftApi = async ({ to, subject, body, attachments }) => {
     }
     throw err;
   }
-};
-
-/**
- * Menampilkan preview lampiran email.
- * Jika ekstensi file tidak mendukung preview, fungsi akan mengembalikan fallback untuk download.
- *
- * @param {string|number} uid - UID email.
- * @param {string} filename - Nama file lampiran.
- * @returns {Promise<Object>} Objek berisi URL preview, MIME type, filename, atau flag fallbackDownload.
- * @throws {Error} Jika token tidak ditemukan atau request gagal.
- */
-export const previewAttachmentApi = async (uid, filename) => {
-  const headers = await getAuthHeaders();
-
-  const ext = filename.split(".").pop().toLowerCase();
-  const previewable = ["jpg", "jpeg", "png", "gif", "webp", "pdf", "txt"];
-
-  // Jika tidak bisa di-preview → kembalikan flag fallback
-  if (!previewable.includes(ext)) {
-    return { fallbackDownload: true };
-  }
-
-  const response = await apiClient.get(
-    `/emails/attachments/${uid}/preview/${encodeURIComponent(filename)}`,
-    {
-      headers,
-      responseType: "blob",
-    }
-  );
-
-  const blob = response.data;
-  const url = URL.createObjectURL(blob);
-
-  return { url, mimeType: blob.type, filename, fallbackDownload: false };
 };

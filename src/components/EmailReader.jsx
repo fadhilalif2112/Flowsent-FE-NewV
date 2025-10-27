@@ -9,11 +9,14 @@ import {
   FolderInput,
   Download,
   Mail,
+  Eye,
+  Loader2,
 } from "lucide-react";
 import { formatDate } from "../utils/formatDate";
 import { getFilePreview } from "../utils/fileUtils";
 import { useEmail } from "../contexts/EmailContext";
 import LoadingSpinner from "./common/LoadingSpinner";
+import PreviewModal from "./PreviewModal";
 
 function EmailReader({ email, onClose, onReply, onForward }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
@@ -25,7 +28,9 @@ function EmailReader({ email, onClose, onReply, onForward }) {
     move: false,
     delete: false,
   });
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [previewLoadings, setPreviewLoadings] = useState({});
+  const [downloadLoadings, setDownloadLoadings] = useState({});
+  const [currentPreview, setCurrentPreview] = useState(null);
 
   const {
     markAsRead,
@@ -36,6 +41,8 @@ function EmailReader({ email, onClose, onReply, onForward }) {
     deleteEmails,
     isAnyActionLoading,
     setActionLoading,
+    downloadAttachment,
+    previewAttachment,
   } = useEmail();
 
   const folders = [
@@ -145,10 +152,40 @@ function EmailReader({ email, onClose, onReply, onForward }) {
   };
 
   /* ------------------------------------------------------------------ */
-  /* 5. Download attachment                                              */
+  /* 4. Download attachment                                              */
   /* ------------------------------------------------------------------ */
-  const handleDownloadAttachment = (attachment) => {
-    window.open(attachment.download_url, "_blank");
+  const handleDownloadAttachment = async (attachment, index) => {
+    setDownloadLoadings((prev) => ({ ...prev, [index]: true }));
+    try {
+      await downloadAttachment(email.messageId, attachment.filename);
+    } catch (err) {
+      console.error("Download attachment error:", err);
+    } finally {
+      setDownloadLoadings((prev) => ({ ...prev, [index]: false }));
+    }
+  };
+
+  const handlePreviewAttachment = async (attachment, index) => {
+    setPreviewLoadings((prev) => ({ ...prev, [index]: true }));
+    try {
+      const result = await previewAttachment(
+        email.messageId,
+        attachment.filename
+      );
+      if (result.fallbackDownload) {
+        await downloadAttachment(email.messageId, attachment.filename);
+      } else {
+        setCurrentPreview({
+          url: result.url,
+          type: result.mimeType,
+          filename: result.filename,
+        });
+      }
+    } catch (err) {
+      console.error("Preview attachment error:", err);
+    } finally {
+      setPreviewLoadings((prev) => ({ ...prev, [index]: false }));
+    }
   };
 
   const formatFileSize = (bytes) => {
@@ -352,10 +389,7 @@ function EmailReader({ email, onClose, onReply, onForward }) {
               </h3>
               <div className="space-y-2">
                 {email.rawAttachments.map((a, i) => {
-                  const previewIcon = getFilePreview({
-                    name: a.filename,
-                    url: a.download_url,
-                  });
+                  const previewIcon = getFilePreview({ name: a.filename });
                   return (
                     <div
                       key={i}
@@ -376,13 +410,48 @@ function EmailReader({ email, onClose, onReply, onForward }) {
                           </div>
                         </div>
                       </div>
-                      <button
-                        onClick={() => handleDownloadAttachment(a)}
-                        title="Download"
-                        className="p-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition"
-                      >
-                        <Download className="w-5 h-5" />
-                      </button>
+                      <div className="flex space-x-1">
+                        <button
+                          onClick={() => handlePreviewAttachment(a, i)}
+                          disabled={
+                            previewLoadings[i] ||
+                            downloadLoadings[i] ||
+                            isAnyActionLoading
+                          }
+                          className={`p-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition ${
+                            previewLoadings[i]
+                              ? "text-indigo-500 dark:text-indigo-500"
+                              : ""
+                          }`}
+                          title="Preview"
+                        >
+                          {previewLoadings[i] ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Eye className="w-5 h-5" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleDownloadAttachment(a, i)}
+                          disabled={
+                            previewLoadings[i] ||
+                            downloadLoadings[i] ||
+                            isAnyActionLoading
+                          }
+                          className={`p-2 text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/30 transition ${
+                            downloadLoadings[i]
+                              ? "text-indigo-500 dark:text-indigo-500"
+                              : ""
+                          }`}
+                          title="Download"
+                        >
+                          {downloadLoadings[i] ? (
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                          ) : (
+                            <Download className="w-5 h-5" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -391,6 +460,15 @@ function EmailReader({ email, onClose, onReply, onForward }) {
           )}
         </div>
       </div>
+
+      {currentPreview && (
+        <PreviewModal
+          url={currentPreview.url}
+          type={currentPreview.type}
+          filename={currentPreview.filename}
+          onClose={() => setCurrentPreview(null)}
+        />
+      )}
     </div>
   );
 }

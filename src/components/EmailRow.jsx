@@ -4,20 +4,27 @@ import { Star, Reply, Paperclip, Download, Eye, Loader2 } from "lucide-react";
 import { formatDate } from "../utils/formatDate";
 import { getFilePreview } from "../utils/fileUtils";
 import { useEmail } from "../contexts/EmailContext";
+import PreviewModal from "./PreviewModal";
 
 function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
-  const { flagEmail, unflagEmail, isAnyActionLoading } = useEmail();
+  const {
+    flagEmail,
+    unflagEmail,
+    isAnyActionLoading,
+    downloadAttachment,
+    previewAttachment,
+  } = useEmail();
+
   const [isStarLoading, setIsStarLoading] = useState(false);
   const [previewLoadings, setPreviewLoadings] = useState({});
+  const [downloadLoadings, setDownloadLoadings] = useState({}); // ✅ loader baru untuk tombol download
+  const [currentPreview, setCurrentPreview] = useState(null);
 
   const handleStarClick = async (e) => {
     e.stopPropagation();
     setIsStarLoading(true);
     try {
-      // email.folder bisa undefined kalau email dari starred
-      // jadi fallback ke "inbox"
       const currentFolder = email.folder || "inbox";
-
       if (email.flagged) {
         await unflagEmail([email.messageId], currentFolder);
       } else {
@@ -30,9 +37,7 @@ function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
     }
   };
 
-  const handleCheckboxClick = (e) => {
-    e.stopPropagation();
-  };
+  const handleCheckboxClick = (e) => e.stopPropagation();
 
   const isNew = () => {
     const emailDate = new Date(email.timestamp);
@@ -40,14 +45,35 @@ function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
     return now - emailDate < 24 * 60 * 60 * 1000;
   };
 
-  const handleDownload = (attachment) => {
-    console.log(`Downloading attachment: ${attachment.filename}`);
+  const handleDownload = async (attachment, index) => {
+    setDownloadLoadings((prev) => ({ ...prev, [index]: true })); // ✅ aktifkan loader
+    try {
+      await downloadAttachment(email.uid, attachment.filename);
+    } catch (error) {
+      console.error("Failed to download attachment:", error);
+    } finally {
+      setDownloadLoadings((prev) => ({ ...prev, [index]: false })); // ✅ matikan loader
+    }
   };
 
   const handlePreview = async (attachment, index) => {
     setPreviewLoadings((prev) => ({ ...prev, [index]: true }));
-    console.log(`Previewing attachment: ${attachment.filename}`);
-    setPreviewLoadings((prev) => ({ ...prev, [index]: false }));
+    try {
+      const result = await previewAttachment(email.uid, attachment.filename);
+      if (result.fallbackDownload) {
+        await downloadAttachment(email.uid, attachment.filename);
+      } else {
+        setCurrentPreview({
+          url: result.url,
+          type: result.mimeType,
+          filename: result.filename,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to preview attachment:", error);
+    } finally {
+      setPreviewLoadings((prev) => ({ ...prev, [index]: false }));
+    }
   };
 
   return (
@@ -182,12 +208,21 @@ function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDownload(attachment);
+                        handleDownload(attachment, index);
                       }}
-                      className="text-green-500 hover:text-green-700 focus:outline-none"
+                      disabled={downloadLoadings[index] || isAnyActionLoading}
+                      className={`focus:outline-none ${
+                        downloadLoadings[index]
+                          ? "text-green-500"
+                          : "text-green-500 hover:text-green-700"
+                      }`}
                       aria-label="Download attachment"
                     >
-                      <Download className="w-3 h-3" />
+                      {downloadLoadings[index] ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Download className="w-3 h-3" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -196,6 +231,15 @@ function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
           )}
         </div>
       </div>
+
+      {currentPreview && (
+        <PreviewModal
+          url={currentPreview.url}
+          type={currentPreview.type}
+          filename={currentPreview.filename}
+          onClose={() => setCurrentPreview(null)}
+        />
+      )}
     </div>
   );
 }

@@ -9,6 +9,8 @@ import {
   moveEmailApi,
   deletePermanentApi,
   deletePermanentAllApi,
+  downloadAttachmentApi,
+  previewAttachmentApi,
 } from "../services/api";
 import Notification from "../components/common/Notification";
 import useOptimisticUpdate from "../hooks/useOptimisticUpdate";
@@ -348,6 +350,40 @@ export function EmailProvider({ children }) {
     }
   };
 
+  // === HANDLERS: ATTACHMENT OPERATIONS ===
+  const downloadAttachment = async (emailUid, filename) => {
+    try {
+      await downloadAttachmentApi(emailUid, filename);
+      showNotification(`Downloading ${filename}`, "success");
+    } catch (err) {
+      console.error("Download error:", err);
+      showNotification(`Failed to download ${filename}`, "error");
+      throw err;
+    }
+  };
+
+  // Preview attachment with fallback to download
+  const previewAttachment = async (emailUid, filename) => {
+    try {
+      const result = await previewAttachmentApi(emailUid, filename);
+
+      if (result.fallbackDownload) {
+        showNotification(
+          "This file type cannot be previewed. Downloading instead...",
+          "info"
+        );
+        await downloadAttachment(emailUid, filename);
+        return { fallbackDownload: true };
+      }
+
+      return result;
+    } catch (err) {
+      console.error("Preview error:", err);
+      showNotification(`Failed to preview ${filename}`, "error");
+      throw err;
+    }
+  };
+
   // === PROVIDER VALUE ===
   const value = {
     emails,
@@ -365,6 +401,8 @@ export function EmailProvider({ children }) {
     moveEmail,
     deleteEmails,
     deletePermanentAll, // Add new function to context
+    downloadAttachment,
+    previewAttachment,
     showNotification,
     setCurrentPage,
     setPerPage,
