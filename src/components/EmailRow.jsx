@@ -1,16 +1,18 @@
 // src/components/EmailRow.jsx
-import React from "react";
-import { Star, Reply, Paperclip, Download, Eye } from "lucide-react";
+import React, { useState } from "react";
+import { Star, Reply, Paperclip, Download, Eye, Loader2 } from "lucide-react";
 import { formatDate } from "../utils/formatDate";
 import { getFilePreview } from "../utils/fileUtils";
 import { useEmail } from "../contexts/EmailContext";
 
 function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
-  const { flagEmail, unflagEmail } = useEmail();
+  const { flagEmail, unflagEmail, isAnyActionLoading } = useEmail();
+  const [isStarLoading, setIsStarLoading] = useState(false);
+  const [previewLoadings, setPreviewLoadings] = useState({});
 
   const handleStarClick = async (e) => {
     e.stopPropagation();
-
+    setIsStarLoading(true);
     try {
       // email.folder bisa undefined kalau email dari starred
       // jadi fallback ke "inbox"
@@ -23,6 +25,8 @@ function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
       }
     } catch (error) {
       console.error("Failed to toggle star:", error);
+    } finally {
+      setIsStarLoading(false);
     }
   };
 
@@ -40,8 +44,10 @@ function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
     console.log(`Downloading attachment: ${attachment.filename}`);
   };
 
-  const handlePreview = (attachment) => {
+  const handlePreview = async (attachment, index) => {
+    setPreviewLoadings((prev) => ({ ...prev, [index]: true }));
     console.log(`Previewing attachment: ${attachment.filename}`);
+    setPreviewLoadings((prev) => ({ ...prev, [index]: false }));
   };
 
   return (
@@ -69,14 +75,23 @@ function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
         {/* Star/Flag */}
         <button
           onClick={handleStarClick}
-          className="flex-shrink-0 mt-1 text-slate-400 dark:text-slate-500 hover:text-amber-500 transition-colors focus:outline-none"
+          disabled={isStarLoading || isAnyActionLoading}
+          className={`flex-shrink-0 mt-1 transition-colors focus:outline-none ${
+            isStarLoading
+              ? "text-indigo-500"
+              : "text-slate-400 dark:text-slate-500 hover:text-amber-500"
+          }`}
           aria-label={email.flagged ? "Unflag" : "Flag"}
         >
-          <Star
-            className={`w-4 sm:w-5 h-4 sm:h-5 ${
-              email.flagged ? "text-amber-500 fill-amber-500" : ""
-            }`}
-          />
+          {isStarLoading ? (
+            <Loader2 className="w-4 sm:w-5 h-4 sm:h-5 animate-spin" />
+          ) : (
+            <Star
+              className={`w-4 sm:w-5 h-4 sm:h-5 ${
+                email.flagged ? "text-amber-500 fill-amber-500" : ""
+              }`}
+            />
+          )}
         </button>
 
         {/* Email Content */}
@@ -148,12 +163,21 @@ function EmailRow({ email, isSelected, isChecked, onClick, onToggleCheck }) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handlePreview(attachment);
+                        handlePreview(attachment, index);
                       }}
-                      className="text-blue-500 hover:text-blue-700 focus:outline-none"
+                      disabled={previewLoadings[index] || isAnyActionLoading}
+                      className={`focus:outline-none ${
+                        previewLoadings[index]
+                          ? "text-indigo-500"
+                          : "text-blue-500 hover:text-blue-700"
+                      }`}
                       aria-label="Preview attachment"
                     >
-                      <Eye className="w-3 h-3" />
+                      {previewLoadings[index] ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Eye className="w-3 h-3" />
+                      )}
                     </button>
                     <button
                       onClick={(e) => {

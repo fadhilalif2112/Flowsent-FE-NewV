@@ -214,7 +214,6 @@ function MailboxPage() {
               email={selectedEmail}
               onClose={handleCloseReader}
               onReply={() => handleCompose("reply", selectedEmail)}
-              onReplyAll={() => handleCompose("reply-all", selectedEmail)}
               onForward={() => handleCompose("forward", selectedEmail)}
               currentFolder={folder}
             />

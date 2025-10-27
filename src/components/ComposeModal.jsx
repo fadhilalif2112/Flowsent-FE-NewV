@@ -1,10 +1,12 @@
+// src/components/ComposeModal.jsx
 import React, { useState, useEffect, useRef } from "react";
 import { X, Paperclip, Send } from "lucide-react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { sendEmailApi, saveDraftApi } from "../services/api";
 import { useEmail } from "../contexts/EmailContext";
-import ConfirmDialog from "../components/common/ConfirmDialog";
+import ConfirmDialog from "./common/ConfirmDialog";
+import LoadingSpinner from "./common/LoadingSpinner";
 
 function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
   const [to, setTo] = useState("");
@@ -18,12 +20,13 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
   const [linkUrl, setLinkUrl] = useState("");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [errors, setErrors] = useState({});
+  const [isSending, setIsSending] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
 
-  const { setLoading, setLoadingMessage, showNotification, refreshEmail } = useEmail();
+  const { showNotification, isAnyActionLoading, setActionLoading } = useEmail();
   const quillRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Initialize form based on mode
   useEffect(() => {
     if (mode === "reply" || mode === "reply-all") {
       setTo(originalEmail?.senderEmail || "");
@@ -55,13 +58,15 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
       setSubject(originalEmail?.subject || "");
       setBody(originalEmail?.body?.html || originalEmail?.body?.text || "");
       if (originalEmail?.rawAttachments) {
-        const normalizedAttachments = originalEmail.rawAttachments.map((att) => ({
-          name: att.filename,
-          size: att.size,
-          mime: att.mime_type || "application/octet-stream",
-          downloadUrl: att.download_url,
-          isServer: true,
-        }));
+        const normalizedAttachments = originalEmail.rawAttachments.map(
+          (att) => ({
+            name: att.filename,
+            size: att.size,
+            mime: att.mime_type || "application/octet-stream",
+            downloadUrl: att.download_url,
+            isServer: true,
+          })
+        );
         setAttachments(normalizedAttachments);
       } else {
         setAttachments([]);
@@ -75,7 +80,6 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
     setErrors({});
   }, [mode, originalEmail]);
 
-  // Quill toolbar configuration
   const quillModules = {
     toolbar: {
       container: [
@@ -103,35 +107,37 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
     },
   };
 
-  // Validate email addresses
   const validateEmails = (emails) => {
     if (!emails.trim()) return false;
     const emailList = emails
       .split(/[,;]/)
       .map((e) => e.trim())
       .filter((e) => e);
-    if (emailList.length > 1) return false; // Hanya izinkan satu email
-    return emailList.length === 1 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailList[0]);
+    if (emailList.length > 1) return false;
+    return (
+      emailList.length === 1 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailList[0])
+    );
   };
 
-  // Validate form
   const validateForm = () => {
     const newErrors = {};
     if (!to.trim()) newErrors.to = "Email penerima wajib diisi";
-    else if (!validateEmails(to)) newErrors.to = "Masukkan satu alamat email yang valid";
+    else if (!validateEmails(to))
+      newErrors.to = "Masukkan satu alamat email yang valid";
     if (!subject.trim()) newErrors.subject = "Subjek wajib diisi";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Handle file selection
   const handleFileSelect = (e) => {
     const files = Array.from(e.target.files);
-    const maxSize = 10 * 1024 * 1024; // 10MB
+    const maxSize = 10 * 1024 * 1024;
     const oversized = files.filter((f) => f.size > maxSize);
     if (oversized.length > 0) {
       showNotification(
-        `File terlalu besar (maks 10MB): ${oversized.map((f) => f.name).join(", ")}`,
+        `File terlalu besar (maks 10MB): ${oversized
+          .map((f) => f.name)
+          .join(", ")}`,
         "error"
       );
       return;
@@ -146,16 +152,14 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
     }));
     setAttachments([...attachments, ...newAttachments]);
     showNotification(`${files.length} file berhasil dilampirkan`, "success");
-    if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  // Remove attachment
   const handleRemoveAttachment = (index) => {
     setAttachments(attachments.filter((_, i) => i !== index));
     showNotification("Lampiran dihapus", "info");
   };
 
-  // Check if form has data
   const hasData = () => {
     const plainBody = body
       .replace(/<(.|\n)*?>/g, "")
@@ -169,7 +173,6 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
     );
   };
 
-  // Handle close with confirmation
   const handleClose = () => {
     if (hasData()) {
       setConfirmDiscard(true);
@@ -178,15 +181,14 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
     }
   };
 
-  // Handle sending email
   const handleSendEmail = async () => {
     if (!validateForm()) {
       showNotification("Harap perbaiki kesalahan validasi", "error");
       return;
     }
 
-    setLoading(true);
-    setLoadingMessage("Mengirim email...");
+    setIsSending(true);
+    setActionLoading(true);
     try {
       const newAttachments = attachments
         .filter((a) => !a.isServer)
@@ -204,26 +206,26 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
         body,
         attachments: newAttachments,
         draftId: originalEmail?.draftId || null,
-        storedAttachments: storedAttachments.length > 0 ? storedAttachments : [],
+        storedAttachments:
+          storedAttachments.length > 0 ? storedAttachments : [],
         messageId: originalEmail?.messageId || null,
       });
 
       showNotification("Email berhasil dikirim!", "success");
-      await refreshEmail("sent");
-      onSent();
+      await onSent();
       onClose();
     } catch (error) {
       console.error("Error sending email:", error);
       showNotification(error.message || "Gagal mengirim email", "error");
     } finally {
-      setLoading(false);
+      setIsSending(false);
+      setActionLoading(false);
     }
   };
 
-  // Handle saving draft
   const handleSaveDraft = async () => {
-    setLoading(true);
-    setLoadingMessage("Menyimpan draft...");
+    setIsSavingDraft(true);
+    setActionLoading(true);
     try {
       const newAttachments = attachments
         .filter((a) => !a.isServer)
@@ -235,17 +237,17 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
         attachments: newAttachments,
       });
       showNotification("Draft berhasil disimpan!", "success");
-      await refreshEmail("drafts");
+      await onSent();
       onClose();
     } catch (error) {
       console.error("Error saving draft:", error);
       showNotification(error.message || "Gagal menyimpan draft", "error");
     } finally {
-      setLoading(false);
+      setIsSavingDraft(false);
+      setActionLoading(false);
     }
   };
 
-  // Format file size
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 Bytes";
     const k = 1024;
@@ -254,12 +256,13 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
   };
 
-  // Apply link in editor
   const applyLink = () => {
     if (linkUrl && quillRef.current) {
       const editor = quillRef.current.getEditor();
       if (linkDialog.selection) editor.setSelection(linkDialog.selection);
-      const formattedUrl = linkUrl.match(/^https?:/) ? linkUrl : "https://" + linkUrl;
+      const formattedUrl = linkUrl.match(/^https?:/)
+        ? linkUrl
+        : "https://" + linkUrl;
       editor.format("link", formattedUrl);
     }
     setLinkDialog({ show: false, selection: null });
@@ -281,6 +284,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
             onClick={handleClose}
             className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800"
             aria-label="Tutup"
+            disabled={isAnyActionLoading}
           >
             <X className="w-5 h-5" />
           </button>
@@ -288,7 +292,6 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
 
         {/* Form */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {/* To */}
           <div>
             <label
               htmlFor="to"
@@ -305,15 +308,19 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                 if (errors.to) setErrors({ ...errors, to: "" });
               }}
               className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 ${
-                errors.to ? "border-red-500" : "border-slate-300 dark:border-slate-600"
+                errors.to
+                  ? "border-red-500"
+                  : "border-slate-300 dark:border-slate-600"
               }`}
               placeholder="penerima@contoh.com"
               required
+              disabled={isAnyActionLoading}
             />
-            {errors.to && <p className="text-red-500 text-xs mt-1">{errors.to}</p>}
+            {errors.to && (
+              <p className="text-red-500 text-xs mt-1">{errors.to}</p>
+            )}
           </div>
 
-          {/* Subject */}
           <div>
             <label
               htmlFor="subject"
@@ -330,15 +337,19 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                 if (errors.subject) setErrors({ ...errors, subject: "" });
               }}
               className={`w-full px-4 py-2.5 bg-white dark:bg-slate-900 border rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400 focus:border-indigo-500 dark:focus:border-indigo-400 ${
-                errors.subject ? "border-red-500" : "border-slate-300 dark:border-slate-600"
+                errors.subject
+                  ? "border-red-500"
+                  : "border-slate-300 dark:border-slate-600"
               }`}
               placeholder="Subjek email"
               required
+              disabled={isAnyActionLoading}
             />
-            {errors.subject && <p className="text-red-500 text-xs mt-1">{errors.subject}</p>}
+            {errors.subject && (
+              <p className="text-red-500 text-xs mt-1">{errors.subject}</p>
+            )}
           </div>
 
-          {/* Body */}
           <div>
             <label
               htmlFor="body"
@@ -346,7 +357,11 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
             >
               Pesan
             </label>
-            <div className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 dark:focus-within:ring-indigo-400 focus-within:border-transparent transition">
+            <div
+              className={`w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 dark:focus-within:ring-indigo-400 focus-within:border-transparent transition ${
+                isAnyActionLoading ? "pointer-events-none opacity-50" : ""
+              }`}
+            >
               <ReactQuill
                 ref={quillRef}
                 theme="snow"
@@ -358,11 +373,11 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                   [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-slate-300 dark:[&_.ql-toolbar]:!border-slate-700
                   [&_.ql-toolbar]:!bg-white dark:[&_.ql-toolbar]:!bg-slate-900
                   [&_.ql-container]:!border-none [&_.ql-editor]:!text-slate-900 dark:[&_.ql-editor]:!text-slate-100"
+                readOnly={isAnyActionLoading}
               />
             </div>
           </div>
 
-          {/* Attachments */}
           {attachments.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -391,6 +406,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                     <button
                       onClick={() => handleRemoveAttachment(index)}
                       className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition ml-3"
+                      disabled={isAnyActionLoading}
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -404,13 +420,18 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
         {/* Footer */}
         <div className="bg-slate-50 dark:bg-slate-900/50 px-6 py-4 rounded-b-2xl border-t border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <label className="cursor-pointer text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition">
+            <label
+              className={`cursor-pointer text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 transition ${
+                isAnyActionLoading ? "opacity-50 pointer-events-none" : ""
+              }`}
+            >
               <input
                 type="file"
                 multiple
                 ref={fileInputRef}
                 onChange={handleFileSelect}
                 className="hidden"
+                disabled={isAnyActionLoading}
               />
               <div className="flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition">
                 <Paperclip className="w-5 h-5" />
@@ -422,22 +443,33 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
           <div className="flex items-center space-x-3">
             <button
               onClick={handleSaveDraft}
-              className="px-4 py-2 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+              disabled={isSavingDraft || isAnyActionLoading}
+              className="min-w-[120px] px-4 py-2 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed font-medium text-center"
             >
-              Simpan Draft
+              {isSavingDraft ? (
+                <LoadingSpinner message="Menyimpan draft..." />
+              ) : (
+                "Simpan Draft"
+              )}
             </button>
             <button
               onClick={handleSendEmail}
-              className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md flex items-center space-x-2"
+              disabled={isSending || isAnyActionLoading}
+              className="min-w-[140px] px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md flex items-center justify-center space-x-2"
             >
-              <Send className="w-4 h-4" />
-              <span>Kirim</span>
+              {isSending ? (
+                <LoadingSpinner message="Mengirim email..." />
+              ) : (
+                <>
+                  <Send className="w-4 h-4" />
+                  <span>Kirim</span>
+                </>
+              )}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Link Dialog */}
       {linkDialog.show && (
         <div className="fixed inset-0 bg-black/30 z-[60] flex items-center justify-center">
           <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-xl w-96 border border-slate-200 dark:border-slate-700">
@@ -457,17 +489,20 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                 }
               }}
               autoFocus
+              disabled={isAnyActionLoading}
             />
             <div className="flex justify-end gap-2 mt-4">
               <button
                 onClick={() => setLinkDialog({ show: false, selection: null })}
                 className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition"
+                disabled={isAnyActionLoading}
               >
                 Batal
               </button>
               <button
                 onClick={applyLink}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                disabled={isAnyActionLoading}
               >
                 Sisipkan
               </button>
@@ -476,7 +511,6 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
         </div>
       )}
 
-      {/* Confirm Discard */}
       {confirmDiscard && (
         <ConfirmDialog
           title="Buang Draft"
@@ -489,6 +523,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
             onClose();
           }}
           onCancel={() => setConfirmDiscard(false)}
+          disabled={isAnyActionLoading}
         />
       )}
     </div>

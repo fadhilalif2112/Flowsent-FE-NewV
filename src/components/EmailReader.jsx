@@ -1,24 +1,21 @@
 // src/components/EmailReader.jsx
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Reply,
-  ReplyAll,
   Forward,
   Star,
   MailOpen,
   FolderInput,
-  Trash2,
   Download,
   Mail,
 } from "lucide-react";
 import { formatDate } from "../utils/formatDate";
 import { getFilePreview } from "../utils/fileUtils";
 import { useEmail } from "../contexts/EmailContext";
-import ConfirmDialog from "../components/common/ConfirmDialog";
 import LoadingSpinner from "./common/LoadingSpinner";
 
-function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
+function EmailReader({ email, onClose, onReply, onForward }) {
   const [showMoveMenu, setShowMoveMenu] = useState(false);
   const [loadingActions, setLoadingActions] = useState({
     flag: false,
@@ -37,9 +34,8 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
     unflagEmail,
     moveEmail,
     deleteEmails,
-    refreshEmail,
-    isAnyActionLoading, // [CHANGE] Added
-    setActionLoading, // [CHANGE] Added
+    isAnyActionLoading,
+    setActionLoading,
   } = useEmail();
 
   const folders = [
@@ -53,25 +49,50 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
   const emailId = email.messageId;
   const currentFolder = email.folder || "inbox";
 
+  // Auto mark as read for unread emails on component mount
+  useEffect(() => {
+    if (!email.seen && !isAnyActionLoading) {
+      const autoMarkAsRead = async () => {
+        setLoadingActions((prev) => ({ ...prev, "mark-read": true }));
+        setActionLoading(true);
+        try {
+          await markAsRead([emailId], currentFolder);
+        } catch (err) {
+          console.error("Auto mark as read error:", err);
+        } finally {
+          setLoadingActions((prev) => ({ ...prev, "mark-read": false }));
+          setActionLoading(false);
+        }
+      };
+      autoMarkAsRead();
+    }
+  }, [
+    email.seen,
+    emailId,
+    currentFolder,
+    markAsRead,
+    isAnyActionLoading,
+    setActionLoading,
+  ]);
+
   /* ------------------------------------------------------------------ */
   /* 1. Toggle Star (flag / unflag)                                      */
   /* ------------------------------------------------------------------ */
   const handleToggleStar = async () => {
     const action = email.flagged ? "unflag" : "flag";
     setLoadingActions((prev) => ({ ...prev, [action]: true }));
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       if (email.flagged) {
         await unflagEmail([emailId], currentFolder);
       } else {
         await flagEmail([emailId], currentFolder);
       }
-      await refreshEmail(currentFolder);
     } catch (err) {
       console.error("Toggle flag error:", err);
     } finally {
       setLoadingActions((prev) => ({ ...prev, [action]: false }));
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
@@ -80,29 +101,27 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
   /* ------------------------------------------------------------------ */
   const handleMarkAsUnread = async () => {
     setLoadingActions((prev) => ({ ...prev, "mark-unread": true }));
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       await markAsUnread([emailId], currentFolder);
-      await refreshEmail(currentFolder);
     } catch (err) {
       console.error("Mark as unread error:", err);
     } finally {
       setLoadingActions((prev) => ({ ...prev, "mark-unread": false }));
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
   const handleMarkAsRead = async () => {
     setLoadingActions((prev) => ({ ...prev, "mark-read": true }));
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       await markAsRead([emailId], currentFolder);
-      await refreshEmail(currentFolder);
     } catch (err) {
       console.error("Mark as read error:", err);
     } finally {
       setLoadingActions((prev) => ({ ...prev, "mark-read": false }));
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
@@ -113,36 +132,15 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
     if (targetFolder === currentFolder) return;
     setShowMoveMenu(false);
     setLoadingActions((prev) => ({ ...prev, move: true }));
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       await moveEmail([emailId], targetFolder, currentFolder);
-      await refreshEmail(currentFolder);
-      onClose();
+      onClose(); // Close after notification and optimistic update
     } catch (err) {
       console.error("Move error:", err);
     } finally {
       setLoadingActions((prev) => ({ ...prev, move: false }));
-      setActionLoading(false); // [CHANGE] Reset global loading
-    }
-  };
-
-  /* ------------------------------------------------------------------ */
-  /* 4. Delete (permanent)                                               */
-  /* ------------------------------------------------------------------ */
-  const handleDelete = () => setConfirmDelete(true);
-  const confirmDeleteAction = async () => {
-    setLoadingActions((prev) => ({ ...prev, delete: true }));
-    setActionLoading(true); // [CHANGE] Set global loading
-    try {
-      await deleteEmails([emailId]);
-      await refreshEmail(currentFolder);
-      onClose();
-    } catch (err) {
-      console.error("Delete error:", err);
-    } finally {
-      setConfirmDelete(false);
-      setLoadingActions((prev) => ({ ...prev, delete: false }));
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
@@ -184,13 +182,6 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
             <Reply className="w-5 h-5" />
           </button>
           <button
-            onClick={onReplyAll}
-            title="Reply All"
-            className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-          >
-            <ReplyAll className="w-5 h-5" />
-          </button>
-          <button
             onClick={onForward}
             title="Forward"
             className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -204,7 +195,7 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
             onClick={handleToggleStar}
             disabled={
               loadingActions.flag || loadingActions.unflag || isAnyActionLoading
-            } // [CHANGE] Added isAnyActionLoading
+            }
             title={email.flagged ? "Unflag" : "Flag"}
             className="p-2 text-slate-600 dark:text-slate-400 hover:text-amber-500 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
           >
@@ -223,7 +214,7 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
 
           <button
             onClick={handleMarkAsRead}
-            disabled={loadingActions["mark-read"] || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
+            disabled={loadingActions["mark-read"] || isAnyActionLoading}
             title="Mark as Read"
             className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
           >
@@ -236,7 +227,7 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
 
           <button
             onClick={handleMarkAsUnread}
-            disabled={loadingActions["mark-unread"] || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
+            disabled={loadingActions["mark-unread"] || isAnyActionLoading}
             title="Mark as Unread"
             className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
           >
@@ -250,7 +241,7 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
           <div className="relative">
             <button
               onClick={() => setShowMoveMenu((s) => !s)}
-              disabled={loadingActions.move || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
+              disabled={loadingActions.move || isAnyActionLoading}
               title="Move"
               className="p-2 text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"
             >
@@ -271,7 +262,7 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
                       loadingActions.move ||
                       f.id === currentFolder ||
                       isAnyActionLoading
-                    } // [CHANGE] Added isAnyActionLoading
+                    }
                     className={`w-full text-left px-4 py-2 text-sm transition ${
                       f.id === currentFolder ||
                       loadingActions.move ||
@@ -286,19 +277,6 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
               </div>
             )}
           </div>
-
-          <button
-            onClick={handleDelete}
-            disabled={loadingActions.delete || isAnyActionLoading} // [CHANGE] Added isAnyActionLoading
-            title="Delete"
-            className="p-2 text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
-          >
-            {loadingActions.delete ? (
-              <LoadingSpinner message="Deleting..." />
-            ) : (
-              <Trash2 className="w-5 h-5" />
-            )}
-          </button>
         </div>
 
         <button
@@ -413,20 +391,6 @@ function EmailReader({ email, onClose, onReply, onReplyAll, onForward }) {
           )}
         </div>
       </div>
-
-      {/* Confirm Delete Dialog */}
-      {confirmDelete && (
-        <ConfirmDialog
-          title="Delete Email"
-          message="Are you sure you want to delete this email?"
-          confirmText="Delete"
-          cancelText="Cancel"
-          variant="danger"
-          onConfirm={confirmDeleteAction}
-          onCancel={() => setConfirmDelete(false)}
-          loading={loadingActions.delete}
-        />
-      )}
     </div>
   );
 }

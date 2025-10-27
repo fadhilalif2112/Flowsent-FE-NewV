@@ -10,21 +10,24 @@ import {
   deletePermanentApi,
 } from "../services/api";
 import Notification from "../components/common/Notification";
+import useOptimisticUpdate from "../hooks/useOptimisticUpdate";
 
 const EmailContext = createContext();
 export const useEmail = () => useContext(EmailContext);
 
 export function EmailProvider({ children }) {
   // === STATE ===
-  const [allEmails, setAllEmails] = useState([]); // Semua email (dari semua folder)
-  const [emails, setEmails] = useState([]); // Email aktif (folder yang sedang dibuka)
+  const [allEmails, setAllEmails] = useState([]);
+  const [emails, setEmails] = useState([]);
   const [pagination, setPagination] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [perPage, setPerPage] = useState(20);
   const [selectedEmailIds, setSelectedEmailIds] = useState([]);
   const [notification, setNotification] = useState(null);
-  // [CHANGE] Added global loading state for any action
   const [isAnyActionLoading, setActionLoading] = useState(false);
+
+  const { applyOptimisticUpdate, rollbackUpdate, clearPreviousState } =
+    useOptimisticUpdate();
 
   // === UTILS: PAGINASI CLIENT-SIDE ===
   const paginateEmails = (folderEmails, page, perPage) => {
@@ -67,7 +70,6 @@ export function EmailProvider({ children }) {
         }
 
         if (response.status === "success" && response.data) {
-          // ubah bentuk object { inbox: [], sent: [] } → array tunggal
           const emailsWithFolder = Object.entries(response.data).flatMap(
             ([folderName, emails]) =>
               emails.map((email) => ({
@@ -85,7 +87,6 @@ export function EmailProvider({ children }) {
 
       let folderEmails = [];
 
-      // === Tambahkan kembali aturan untuk folder "starred" ===
       if (folder.toLowerCase() === "starred") {
         folderEmails = allEmails.filter((email) => email.flagged === true);
       } else {
@@ -119,74 +120,134 @@ export function EmailProvider({ children }) {
 
   // === HANDLERS ===
   const markAsRead = async (emailIds, currentFolder) => {
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       for (const id of emailIds) {
         await markAsReadApi(currentFolder, id);
       }
+      // Show notification
       showNotification(`Marked ${emailIds.length} email(s) as read`, "success");
-      await refreshEmail(currentFolder);
+      // Apply optimistic update after API success and notification
+      const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
+        allEmails,
+        emails,
+        "markAsRead",
+        emailIds
+      );
+      setAllEmails(updatedAllEmails);
+      setEmails(updatedEmails);
+      clearPreviousState();
     } catch (err) {
       console.error("Error marking as read:", err);
       showNotification("Gagal menandai sebagai sudah dibaca", "error");
+      const rollbackState = rollbackUpdate();
+      if (rollbackState) {
+        setAllEmails(rollbackState.updatedAllEmails);
+        setEmails(rollbackState.updatedEmails);
+      }
     } finally {
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
   const markAsUnread = async (emailIds, currentFolder) => {
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       for (const id of emailIds) {
         await markAsUnreadApi(currentFolder, id);
       }
+      // Show notification
       showNotification(
         `Marked ${emailIds.length} email(s) as unread`,
         "success"
       );
-      await refreshEmail(currentFolder);
+      // Apply optimistic update after API success and notification
+      const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
+        allEmails,
+        emails,
+        "markAsUnread",
+        emailIds
+      );
+      setAllEmails(updatedAllEmails);
+      setEmails(updatedEmails);
+      clearPreviousState();
     } catch (err) {
       console.error("Error marking as unread:", err);
       showNotification("Gagal menandai sebagai belum dibaca", "error");
+      const rollbackState = rollbackUpdate();
+      if (rollbackState) {
+        setAllEmails(rollbackState.updatedAllEmails);
+        setEmails(rollbackState.updatedEmails);
+      }
     } finally {
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
   const flagEmail = async (emailIds, currentFolder) => {
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       for (const id of emailIds) {
         await markAsFlaggedApi(currentFolder, id);
       }
+      // Show notification
       showNotification(`Flagged ${emailIds.length} email(s)`, "success");
-      await refreshEmail(currentFolder);
+      // Apply optimistic update after API success and notification
+      const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
+        allEmails,
+        emails,
+        "flagEmail",
+        emailIds
+      );
+      setAllEmails(updatedAllEmails);
+      setEmails(updatedEmails);
+      clearPreviousState();
     } catch (err) {
       console.error("Error flagging email:", err);
       showNotification("Gagal menandai bendera", "error");
+      const rollbackState = rollbackUpdate();
+      if (rollbackState) {
+        setAllEmails(rollbackState.updatedAllEmails);
+        setEmails(rollbackState.updatedEmails);
+      }
     } finally {
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
   const unflagEmail = async (emailIds, currentFolder) => {
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       for (const id of emailIds) {
         await markAsUnflaggedApi(currentFolder, id);
       }
+      // Show notification
       showNotification(`Unflagged ${emailIds.length} email(s)`, "success");
-      await refreshEmail(currentFolder);
+      // Apply optimistic update after API success and notification
+      const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
+        allEmails,
+        emails,
+        "unflagEmail",
+        emailIds
+      );
+      setAllEmails(updatedAllEmails);
+      setEmails(updatedEmails);
+      clearPreviousState();
     } catch (err) {
       console.error("Error unflagging email:", err);
       showNotification("Gagal menghapus bendera", "error");
+      const rollbackState = rollbackUpdate();
+      if (rollbackState) {
+        setAllEmails(rollbackState.updatedAllEmails);
+        setEmails(rollbackState.updatedEmails);
+      }
     } finally {
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
   const moveEmail = async (emailIds, targetFolder, currentFolder) => {
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       const response = await moveEmailApi(
         currentFolder,
@@ -195,11 +256,22 @@ export function EmailProvider({ children }) {
       );
 
       if (response.status === "success") {
+        // Show notification
         showNotification(
           `Moved ${emailIds.length} email(s) to ${targetFolder}`,
           "success"
         );
-        await refreshEmail(currentFolder);
+        // Apply optimistic update after API success and notification
+        const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
+          allEmails,
+          emails,
+          "moveEmail",
+          emailIds,
+          { targetFolder }
+        );
+        setAllEmails(updatedAllEmails);
+        setEmails(updatedEmails);
+        clearPreviousState();
       } else {
         throw new Error(response.message || response.error || "Unknown error");
       }
@@ -212,26 +284,46 @@ export function EmailProvider({ children }) {
         errorMsg += " – Endpoint tidak ditemukan";
       if (err.message.includes("500")) errorMsg += " – Server error";
       showNotification(errorMsg, "error");
+      const rollbackState = rollbackUpdate();
+      if (rollbackState) {
+        setAllEmails(rollbackState.updatedAllEmails);
+        setEmails(rollbackState.updatedEmails);
+      }
     } finally {
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
   const deleteEmails = async (emailIds) => {
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       const response = await deletePermanentApi(emailIds);
       if (response.success) {
+        // Show notification
         showNotification(`Deleted ${emailIds.length} email(s)`, "success");
-        await refreshEmail("inbox"); // default refresh ke inbox
+        // Apply optimistic update after API success and notification
+        const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
+          allEmails,
+          emails,
+          "deleteEmails",
+          emailIds
+        );
+        setAllEmails(updatedAllEmails);
+        setEmails(updatedEmails);
+        clearPreviousState();
       } else {
         throw new Error(response.message || "Failed to delete emails");
       }
     } catch (err) {
       console.error(err);
       showNotification("Gagal menghapus email", "error");
+      const rollbackState = rollbackUpdate();
+      if (rollbackState) {
+        setAllEmails(rollbackState.updatedAllEmails);
+        setEmails(rollbackState.updatedEmails);
+      }
     } finally {
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
@@ -255,8 +347,8 @@ export function EmailProvider({ children }) {
     setCurrentPage,
     setPerPage,
     setSelectedEmailIds,
-    isAnyActionLoading, // [CHANGE] Added to context
-    setActionLoading, // [CHANGE] Added to context
+    isAnyActionLoading,
+    setActionLoading,
   };
 
   return (

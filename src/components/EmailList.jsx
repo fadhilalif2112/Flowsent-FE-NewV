@@ -32,8 +32,8 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     unflagEmail,
     moveEmail,
     deleteEmails,
-    isAnyActionLoading, // [CHANGE] Added
-    setActionLoading, // [CHANGE] Added
+    isAnyActionLoading,
+    setActionLoading,
   } = useEmail();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -59,8 +59,6 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
 
   const folders = [
     { id: "inbox", name: "Inbox", icon: Inbox },
-    { id: "draft", name: "Drafts", icon: FileWarning },
-    { id: "sent", name: "Sent", icon: Mail },
     { id: "starred", name: "Starred", icon: Star },
     { id: "archive", name: "Archive", icon: Archive },
     { id: "junk", name: "Junk", icon: Folder },
@@ -88,7 +86,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     if (ids.length === 0) return;
 
     setLoadingActions((prev) => ({ ...prev, [action]: true }));
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       switch (action) {
         case "mark-read":
@@ -117,14 +115,14 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     } finally {
       if (action !== "delete") {
         setLoadingActions((prev) => ({ ...prev, [action]: false }));
-        setActionLoading(false); // [CHANGE] Reset global loading
+        setActionLoading(false);
       }
     }
   };
 
   const confirmDeleteAction = async () => {
     setLoadingActions((prev) => ({ ...prev, delete: true }));
-    setActionLoading(true); // [CHANGE] Set global loading
+    setActionLoading(true);
     try {
       await deleteEmails(selectedEmailIds);
       setSelectedEmailIds([]);
@@ -133,7 +131,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     } finally {
       setConfirmDelete(false);
       setLoadingActions((prev) => ({ ...prev, delete: false }));
-      setActionLoading(false); // [CHANGE] Reset global loading
+      setActionLoading(false);
     }
   };
 
@@ -251,7 +249,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
                     isStarredFolder ||
                     loadingActions[action] ||
                     isAnyActionLoading
-                  } // [CHANGE] Added isAnyActionLoading
+                  }
                   className={`p-1.5 rounded-lg transition ${
                     isStarredFolder ||
                     loadingActions[action] ||
@@ -276,7 +274,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
                   }
                   disabled={
                     isStarredFolder || loadingActions.move || isAnyActionLoading
-                  } // [CHANGE] Added isAnyActionLoading
+                  }
                   title="Move to folder"
                   className={`p-1.5 rounded-lg transition ${
                     isStarredFolder || loadingActions.move || isAnyActionLoading
@@ -305,7 +303,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
                           f.id === folder ||
                           loadingActions.move ||
                           isAnyActionLoading
-                        } // [CHANGE] Added isAnyActionLoading
+                        }
                         className={`w-full text-left px-4 py-2 text-sm transition ${
                           f.id === folder ||
                           loadingActions.move ||
@@ -327,7 +325,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
                 onClick={() => handleBulkAction("delete")}
                 disabled={
                   isStarredFolder || loadingActions.delete || isAnyActionLoading
-                } // [CHANGE] Added isAnyActionLoading
+                }
                 className={`p-1.5 rounded-lg transition ${
                   isStarredFolder || loadingActions.delete || isAnyActionLoading
                     ? "text-red-300 dark:text-red-700 cursor-not-allowed"
