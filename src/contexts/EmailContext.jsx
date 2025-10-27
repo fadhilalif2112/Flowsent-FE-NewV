@@ -8,6 +8,7 @@ import {
   markAsUnflaggedApi,
   moveEmailApi,
   deletePermanentApi,
+  deletePermanentAllApi,
 } from "../services/api";
 import Notification from "../components/common/Notification";
 import useOptimisticUpdate from "../hooks/useOptimisticUpdate";
@@ -125,9 +126,7 @@ export function EmailProvider({ children }) {
       for (const id of emailIds) {
         await markAsReadApi(currentFolder, id);
       }
-      // Show notification
       showNotification(`Marked ${emailIds.length} email(s) as read`, "success");
-      // Apply optimistic update after API success and notification
       const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
         allEmails,
         emails,
@@ -156,12 +155,10 @@ export function EmailProvider({ children }) {
       for (const id of emailIds) {
         await markAsUnreadApi(currentFolder, id);
       }
-      // Show notification
       showNotification(
         `Marked ${emailIds.length} email(s) as unread`,
         "success"
       );
-      // Apply optimistic update after API success and notification
       const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
         allEmails,
         emails,
@@ -190,9 +187,7 @@ export function EmailProvider({ children }) {
       for (const id of emailIds) {
         await markAsFlaggedApi(currentFolder, id);
       }
-      // Show notification
       showNotification(`Flagged ${emailIds.length} email(s)`, "success");
-      // Apply optimistic update after API success and notification
       const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
         allEmails,
         emails,
@@ -221,9 +216,7 @@ export function EmailProvider({ children }) {
       for (const id of emailIds) {
         await markAsUnflaggedApi(currentFolder, id);
       }
-      // Show notification
       showNotification(`Unflagged ${emailIds.length} email(s)`, "success");
-      // Apply optimistic update after API success and notification
       const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
         allEmails,
         emails,
@@ -256,12 +249,10 @@ export function EmailProvider({ children }) {
       );
 
       if (response.status === "success") {
-        // Show notification
         showNotification(
           `Moved ${emailIds.length} email(s) to ${targetFolder}`,
           "success"
         );
-        // Apply optimistic update after API success and notification
         const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
           allEmails,
           emails,
@@ -299,9 +290,7 @@ export function EmailProvider({ children }) {
     try {
       const response = await deletePermanentApi(emailIds);
       if (response.success) {
-        // Show notification
         showNotification(`Deleted ${emailIds.length} email(s)`, "success");
-        // Apply optimistic update after API success and notification
         const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
           allEmails,
           emails,
@@ -317,6 +306,38 @@ export function EmailProvider({ children }) {
     } catch (err) {
       console.error(err);
       showNotification("Gagal menghapus email", "error");
+      const rollbackState = rollbackUpdate();
+      if (rollbackState) {
+        setAllEmails(rollbackState.updatedAllEmails);
+        setEmails(rollbackState.updatedEmails);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const deletePermanentAll = async () => {
+    setActionLoading(true);
+    try {
+      const response = await deletePermanentAllApi();
+      if (response.success) {
+        // Changed from response.status === "success" to response.success
+        showNotification("All emails in Deleted folder removed", "success");
+        const { updatedAllEmails, updatedEmails } = applyOptimisticUpdate(
+          allEmails,
+          emails,
+          "deletePermanentAll",
+          []
+        );
+        setAllEmails(updatedAllEmails);
+        setEmails(updatedEmails);
+        clearPreviousState();
+      } else {
+        throw new Error(response.message || "Failed to delete all emails");
+      }
+    } catch (err) {
+      console.error("Error deleting all emails:", err);
+      showNotification("Gagal menghapus semua email", "error");
       const rollbackState = rollbackUpdate();
       if (rollbackState) {
         setAllEmails(rollbackState.updatedAllEmails);
@@ -343,6 +364,7 @@ export function EmailProvider({ children }) {
     unflagEmail,
     moveEmail,
     deleteEmails,
+    deletePermanentAll, // Add new function to context
     showNotification,
     setCurrentPage,
     setPerPage,

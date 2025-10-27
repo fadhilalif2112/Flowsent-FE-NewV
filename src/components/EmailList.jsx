@@ -32,6 +32,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     unflagEmail,
     moveEmail,
     deleteEmails,
+    deletePermanentAll,
     isAnyActionLoading,
     setActionLoading,
   } = useEmail();
@@ -39,6 +40,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [showMoveMenu, setShowMoveMenu] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [loadingActions, setLoadingActions] = useState({
     "mark-read": false,
     "mark-unread": false,
@@ -46,8 +48,10 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     unstar: false,
     move: false,
     delete: false,
+    "delete-all": false,
   });
   const isStarredFolder = folder?.toLowerCase() === "starred";
+  const isDeletedFolder = folder?.toLowerCase() === "deleted";
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -83,7 +87,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
 
   const handleBulkAction = async (action, targetFolder = null) => {
     const ids = selectedEmailIds;
-    if (ids.length === 0) return;
+    if (ids.length === 0 && action !== "delete-all") return;
 
     setLoadingActions((prev) => ({ ...prev, [action]: true }));
     setActionLoading(true);
@@ -106,14 +110,23 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
           break;
         case "delete":
           setConfirmDelete(true);
-          break;
+          setLoadingActions((prev) => ({ ...prev, delete: false }));
+          setActionLoading(false);
+          return; // Keluar agar tidak reset di sini
+        case "delete-all":
+          setConfirmDeleteAll(true);
+          setLoadingActions((prev) => ({ ...prev, "delete-all": false }));
+          setActionLoading(false);
+          return; // Keluar agar tidak reset di sini
         default:
           console.log("Unknown action:", action);
       }
+      // Reset selected emails setelah aksi selesai
+      setSelectedEmailIds([]);
     } catch (err) {
       console.error(`Error in ${action}:`, err);
     } finally {
-      if (action !== "delete") {
+      if (action !== "delete" && action !== "delete-all") {
         setLoadingActions((prev) => ({ ...prev, [action]: false }));
         setActionLoading(false);
       }
@@ -121,6 +134,7 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
   };
 
   const confirmDeleteAction = async () => {
+    setConfirmDelete(false); // Close dialog immediately
     setLoadingActions((prev) => ({ ...prev, delete: true }));
     setActionLoading(true);
     try {
@@ -129,8 +143,22 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
     } catch (err) {
       console.error("Delete error:", err);
     } finally {
-      setConfirmDelete(false);
       setLoadingActions((prev) => ({ ...prev, delete: false }));
+      setActionLoading(false);
+    }
+  };
+
+  const confirmDeleteAllAction = async () => {
+    setConfirmDeleteAll(false); // Close dialog immediately
+    setLoadingActions((prev) => ({ ...prev, "delete-all": true }));
+    setActionLoading(true);
+    try {
+      await deletePermanentAll();
+      setSelectedEmailIds([]);
+    } catch (err) {
+      console.error("Delete all error:", err);
+    } finally {
+      setLoadingActions((prev) => ({ ...prev, "delete-all": false }));
       setActionLoading(false);
     }
   };
@@ -158,6 +186,31 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
 
   return (
     <div className="flex flex-col flex-1 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 overflow-hidden transition-colors duration-200">
+      {/* Delete Folder Message and Delete All Button */}
+      {isDeletedFolder && (
+        <div className="bg-slate-100 dark:bg-slate-800/60 px-3 sm:px-4 md:px-6 py-2 border-b border-slate-200 dark:border-slate-800 text-sm text-slate-600 dark:text-slate-400 flex flex-col items-center justify-center gap-2">
+          <span>
+            Messages that have been in the Deleted folder for more than 30 days
+            will be deleted automatically.
+          </span>
+          <button
+            onClick={() => handleBulkAction("delete-all")}
+            disabled={loadingActions["delete-all"] || isAnyActionLoading}
+            className={`text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-medium transition ${
+              loadingActions["delete-all"] || isAnyActionLoading
+                ? "opacity-50 cursor-not-allowed"
+                : ""
+            }`}
+          >
+            {loadingActions["delete-all"] ? (
+              <LoadingSpinner message="Deleting all..." />
+            ) : (
+              "Delete All Now"
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Header Toolbar */}
       <div className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-950/40 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 md:px-6 py-3 sm:py-4 flex items-center justify-between gap-2 sm:gap-3">
         <div className="flex items-center space-x-3 sm:space-x-4">
@@ -319,26 +372,33 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
                 )}
               </div>
 
-              <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1"></div>
-
-              <button
-                onClick={() => handleBulkAction("delete")}
-                disabled={
-                  isStarredFolder || loadingActions.delete || isAnyActionLoading
-                }
-                className={`p-1.5 rounded-lg transition ${
-                  isStarredFolder || loadingActions.delete || isAnyActionLoading
-                    ? "text-red-300 dark:text-red-700 cursor-not-allowed"
-                    : "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300"
-                }`}
-                title="Delete"
-              >
-                {loadingActions.delete ? (
-                  <LoadingSpinner message="Deleting..." />
-                ) : (
-                  <Trash2 className="w-4 h-4" />
-                )}
-              </button>
+              {isDeletedFolder && (
+                <>
+                  <div className="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1"></div>
+                  <button
+                    onClick={() => handleBulkAction("delete")}
+                    disabled={
+                      isStarredFolder ||
+                      loadingActions.delete ||
+                      isAnyActionLoading
+                    }
+                    className={`p-1.5 rounded-lg transition ${
+                      isStarredFolder ||
+                      loadingActions.delete ||
+                      isAnyActionLoading
+                        ? "text-red-300 dark:text-red-700 cursor-not-allowed"
+                        : "text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-700 dark:hover:text-red-300"
+                    }`}
+                    title="Delete"
+                  >
+                    {loadingActions.delete ? (
+                      <LoadingSpinner message="Deleting..." />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -383,6 +443,19 @@ function EmailList({ folder, selectedEmail, onSelectEmail }) {
           variant="danger"
           onConfirm={confirmDeleteAction}
           onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {/* Confirm Delete All */}
+      {confirmDeleteAll && (
+        <ConfirmDialog
+          title="Delete All Emails"
+          message="Are you sure you want to permanently delete all emails in the Deleted folder?"
+          confirmText="Delete All"
+          cancelText="Cancel"
+          variant="danger"
+          onConfirm={confirmDeleteAllAction}
+          onCancel={() => setConfirmDeleteAll(false)}
         />
       )}
     </div>

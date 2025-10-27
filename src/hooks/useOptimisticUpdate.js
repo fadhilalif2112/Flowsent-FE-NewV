@@ -62,6 +62,12 @@ const useOptimisticUpdate = () => {
           (email) => !emailIds.includes(email.messageId)
         );
         break;
+      case "deletePermanentAll":
+        updatedAllEmails = allEmails.filter(
+          (email) => email.folder?.toLowerCase() !== "deleted"
+        );
+        updatedEmails = []; // Clear all emails in the deleted folder
+        break;
       default:
         return { updatedAllEmails: allEmails, updatedEmails: emails };
     }

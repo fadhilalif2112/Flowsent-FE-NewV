@@ -246,6 +246,37 @@ export const downloadAttachmentApi = async (uid, filename) => {
   link.remove();
 };
 
+/**
+ * Menampilkan preview lampiran email.
+ * Jika ekstensi file tidak mendukung preview, fungsi akan mengembalikan fallback untuk download.
+ */
+export const previewAttachmentApi = async (uid, filename) => {
+  const token = TokenManager.getToken();
+  if (!token)
+    throw new Error("Authentication token not found. Please login again.");
+
+  const ext = filename.split(".").pop().toLowerCase();
+  const previewable = ["jpg", "jpeg", "png", "gif", "webp", "pdf", "txt", "md", "mov", "mp4"];
+
+  // Jika tidak bisa di-preview → kembalikan flag fallback
+  if (!previewable.includes(ext)) {
+    return { fallbackDownload: true };
+  }
+
+  const response = await apiClient.get(
+    `/emails/attachments/${uid}/preview/${encodeURIComponent(filename)}`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      responseType: "blob",
+    }
+  );
+
+  const blob = response.data;
+  const url = URL.createObjectURL(blob);
+
+  return { url, mimeType: blob.type, filename, fallbackDownload: false };
+};
+
 // ==========================================================
 // EMAIL STATUS HANDLERS
 // ==========================================================
@@ -376,6 +407,7 @@ export const sendEmailApi = async ({
   storedAttachments,
   messageId,
 }) => {
+  try {
   const token = TokenManager.getToken();
   if (!token) {
     throw new Error("Authentication token not found. Please login again.");
@@ -412,7 +444,25 @@ export const sendEmailApi = async ({
     },
   });
 
-  return response.data;
+  return response.data; 
+  // new changed
+} catch (error) {  
+    // TAMBAHKAN ERROR HANDLING INI
+    console.error("sendEmailApi full error:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+    
+    // Extract error message dengan priority yang benar
+    const errorMessage = 
+      error.response?.data?.error ||        // Priority 1: error field dari backend
+      error.response?.data?.message ||      // Priority 2: message field
+      error.message ||                       // Priority 3: axios error message
+      "Gagal mengirim email";               // Fallback
+
+    throw new Error(errorMessage);
+  }
 };
 
 /**
@@ -420,6 +470,7 @@ export const sendEmailApi = async ({
  * Mendukung lampiran baru yang dikirim melalui FormData.
  */
 export const saveDraftApi = async ({ to, subject, body, attachments }) => {
+  try {
   const token = TokenManager.getToken();
   if (!token) {
     throw new Error("Authentication token not found. Please login again.");
@@ -445,35 +496,22 @@ export const saveDraftApi = async ({ to, subject, body, attachments }) => {
   });
 
   return response.data;
-};
+  // new changed
+} catch (error) {
+    // TAMBAHKAN ERROR HANDLING INI
+    console.error("saveDraftApi full error:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message
+    });
+    
+    // Extract error message dengan priority yang benar
+    const errorMessage = 
+      error.response?.data?.error ||        // Priority 1: error field dari backend
+      error.response?.data?.message ||      // Priority 2: message field
+      error.message ||                       // Priority 3: axios error message
+      "Gagal menyimpan draft";              // Fallback
 
-/**
- * Menampilkan preview lampiran email.
- * Jika ekstensi file tidak mendukung preview, fungsi akan mengembalikan fallback untuk download.
- */
-export const previewAttachmentApi = async (uid, filename) => {
-  const token = TokenManager.getToken();
-  if (!token)
-    throw new Error("Authentication token not found. Please login again.");
-
-  const ext = filename.split(".").pop().toLowerCase();
-  const previewable = ["jpg", "jpeg", "png", "gif", "webp", "pdf", "txt"];
-
-  // Jika tidak bisa di-preview → kembalikan flag fallback
-  if (!previewable.includes(ext)) {
-    return { fallbackDownload: true };
+    throw new Error(errorMessage);
   }
-
-  const response = await apiClient.get(
-    `/emails/attachments/${uid}/preview/${encodeURIComponent(filename)}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-      responseType: "blob",
-    }
-  );
-
-  const blob = response.data;
-  const url = URL.createObjectURL(blob);
-
-  return { url, mimeType: blob.type, filename, fallbackDownload: false };
 };

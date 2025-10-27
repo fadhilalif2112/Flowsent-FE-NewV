@@ -1,6 +1,5 @@
-// src/components/ComposeModal.jsx
 import React, { useState, useEffect, useRef } from "react";
-import { X, Paperclip, Send } from "lucide-react";
+import { X, Paperclip, Send, Loader2 } from "lucide-react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
 import { sendEmailApi, saveDraftApi } from "../services/api";
@@ -121,10 +120,9 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
 
   const validateForm = () => {
     const newErrors = {};
-    if (!to.trim()) newErrors.to = "Email penerima wajib diisi";
-    else if (!validateEmails(to))
-      newErrors.to = "Masukkan satu alamat email yang valid";
-    if (!subject.trim()) newErrors.subject = "Subjek wajib diisi";
+    if (!to.trim()) newErrors.to = "Recipient email is required";
+    else if (!validateEmails(to)) newErrors.to = "Enter a valid email address";
+    if (!subject.trim()) newErrors.subject = "Subject is required";
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -135,9 +133,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
     const oversized = files.filter((f) => f.size > maxSize);
     if (oversized.length > 0) {
       showNotification(
-        `File terlalu besar (maks 10MB): ${oversized
-          .map((f) => f.name)
-          .join(", ")}`,
+        `File too large (max 10MB): ${oversized.map((f) => f.name).join(", ")}`,
         "error"
       );
       return;
@@ -151,13 +147,13 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
       isServer: false,
     }));
     setAttachments([...attachments, ...newAttachments]);
-    showNotification(`${files.length} file berhasil dilampirkan`, "success");
+    showNotification(`${files.length} file(s) attached`, "success");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleRemoveAttachment = (index) => {
     setAttachments(attachments.filter((_, i) => i !== index));
-    showNotification("Lampiran dihapus", "info");
+    showNotification("Attachment removed", "info");
   };
 
   const hasData = () => {
@@ -183,7 +179,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
 
   const handleSendEmail = async () => {
     if (!validateForm()) {
-      showNotification("Harap perbaiki kesalahan validasi", "error");
+      showNotification("Please fix validation errors", "error");
       return;
     }
 
@@ -211,12 +207,12 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
         messageId: originalEmail?.messageId || null,
       });
 
-      showNotification("Email berhasil dikirim!", "success");
+      showNotification("Email successfully sent!", "success");
       await onSent();
       onClose();
     } catch (error) {
       console.error("Error sending email:", error);
-      showNotification(error.message || "Gagal mengirim email", "error");
+      showNotification(error.message || "Failed to send email", "error");
     } finally {
       setIsSending(false);
       setActionLoading(false);
@@ -232,16 +228,16 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
         .map((a) => a.file);
       await saveDraftApi({
         to: to.trim(),
-        subject: subject.trim() || "(Tanpa Subjek)",
+        subject: subject.trim() || "(No Subject)",
         body,
         attachments: newAttachments,
       });
-      showNotification("Draft berhasil disimpan!", "success");
+      showNotification("Draft successfully saved!", "success");
       await onSent();
       onClose();
     } catch (error) {
       console.error("Error saving draft:", error);
-      showNotification(error.message || "Gagal menyimpan draft", "error");
+      showNotification(error.message || "Failed to save draft", "error");
     } finally {
       setIsSavingDraft(false);
       setActionLoading(false);
@@ -274,16 +270,16 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
         {/* Header */}
         <div className="bg-slate-50 dark:bg-slate-900/50 px-6 py-4 rounded-t-2xl border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-            {mode === "new" && "Pesan Baru"}
-            {mode === "reply" && "Balas"}
-            {mode === "reply-all" && "Balas Semua"}
-            {mode === "forward" && "Teruskan"}
+            {mode === "new" && "New Message"}
+            {mode === "reply" && "Reply"}
+            {mode === "reply-all" && "Reply All"}
+            {mode === "forward" && "Forward"}
             {mode === "edit-draft" && "Edit Draft"}
           </h2>
           <button
             onClick={handleClose}
             className="text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800"
-            aria-label="Tutup"
+            aria-label="Close"
             disabled={isAnyActionLoading}
           >
             <X className="w-5 h-5" />
@@ -297,7 +293,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
               htmlFor="to"
               className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2"
             >
-              Kepada
+              To
             </label>
             <input
               type="email"
@@ -312,7 +308,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                   ? "border-red-500"
                   : "border-slate-300 dark:border-slate-600"
               }`}
-              placeholder="penerima@contoh.com"
+              placeholder="recipient@example.com"
               required
               disabled={isAnyActionLoading}
             />
@@ -326,7 +322,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
               htmlFor="subject"
               className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2"
             >
-              Subjek
+              Subject
             </label>
             <input
               type="text"
@@ -341,7 +337,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                   ? "border-red-500"
                   : "border-slate-300 dark:border-slate-600"
               }`}
-              placeholder="Subjek email"
+              placeholder="Email subject"
               required
               disabled={isAnyActionLoading}
             />
@@ -355,7 +351,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
               htmlFor="body"
               className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2"
             >
-              Pesan
+              Message
             </label>
             <div
               className={`w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-indigo-500 dark:focus-within:ring-indigo-400 focus-within:border-transparent transition ${
@@ -368,7 +364,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                 value={body}
                 onChange={setBody}
                 modules={quillModules}
-                placeholder="Ketik pesan Anda di sini..."
+                placeholder="Type your message here..."
                 className="min-h-[300px] !border-none !bg-transparent p-0 !m-0
                   [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-slate-300 dark:[&_.ql-toolbar]:!border-slate-700
                   [&_.ql-toolbar]:!bg-white dark:[&_.ql-toolbar]:!bg-slate-900
@@ -381,7 +377,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
           {attachments.length > 0 && (
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Lampiran ({attachments.length})
+                Attachments ({attachments.length})
               </label>
               <div className="space-y-2">
                 {attachments.map((file, index) => (
@@ -399,7 +395,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                         </div>
                         <div className="text-xs text-slate-500 dark:text-slate-400">
                           {formatFileSize(file.size)}
-                          {file.isServer && " (Tersimpan)"}
+                          {file.isServer && " (Saved)"}
                         </div>
                       </div>
                     </div>
@@ -435,7 +431,7 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
               />
               <div className="flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition">
                 <Paperclip className="w-5 h-5" />
-                <span className="text-sm font-medium">Lampirkan</span>
+                <span className="text-sm font-medium">Attach</span>
               </div>
             </label>
           </div>
@@ -447,9 +443,9 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
               className="min-w-[120px] px-4 py-2 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed font-medium text-center"
             >
               {isSavingDraft ? (
-                <LoadingSpinner message="Menyimpan draft..." />
+                <LoadingSpinner message="Saving draft..." />
               ) : (
-                "Simpan Draft"
+                "Save Draft"
               )}
             </button>
             <button
@@ -458,11 +454,14 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
               className="min-w-[140px] px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white font-semibold rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md flex items-center justify-center space-x-2"
             >
               {isSending ? (
-                <LoadingSpinner message="Mengirim email..." />
+                <div className="flex items-center space-x-2 text-white">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Sending email...</span>
+                </div>
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  <span>Kirim</span>
+                  <span>Send</span>
                 </>
               )}
             </button>
@@ -474,13 +473,13 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
         <div className="fixed inset-0 bg-black/30 z-[60] flex items-center justify-center">
           <div className="bg-white dark:bg-slate-800 p-6 rounded-lg shadow-xl w-96 border border-slate-200 dark:border-slate-700">
             <h3 className="text-lg font-semibold mb-4 text-slate-900 dark:text-slate-100">
-              Sisipkan Tautan
+              Insert Link
             </h3>
             <input
               type="text"
               value={linkUrl}
               onChange={(e) => setLinkUrl(e.target.value)}
-              placeholder="Masukkan URL (contoh: https://example.com)"
+              placeholder="Enter URL (e.g., https://example.com)"
               className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:focus:ring-indigo-400"
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
@@ -497,14 +496,14 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
                 className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg transition"
                 disabled={isAnyActionLoading}
               >
-                Batal
+                Cancel
               </button>
               <button
                 onClick={applyLink}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
                 disabled={isAnyActionLoading}
               >
-                Sisipkan
+                Insert
               </button>
             </div>
           </div>
@@ -513,10 +512,10 @@ function ComposeModal({ mode = "new", originalEmail = null, onClose, onSent }) {
 
       {confirmDiscard && (
         <ConfirmDialog
-          title="Buang Draft"
-          message="Apakah Anda yakin ingin membuang draft ini? Semua perubahan akan hilang."
-          confirmText="Buang"
-          cancelText="Batal"
+          title="Discard Draft"
+          message="Are you sure you want to discard this draft? All changes will be lost."
+          confirmText="Discard"
+          cancelText="Cancel"
           variant="warning"
           onConfirm={() => {
             setConfirmDiscard(false);
